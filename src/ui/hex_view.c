@@ -1,4 +1,5 @@
 #include "hex_view.h"
+#include "app.h"
 #include "theme.h"
 #include "../core/checksums.h"
 #include <stdio.h>
@@ -596,6 +597,22 @@ static void on_menu_crc32(GtkMenuItem *item, gpointer user_data) {
     hex_view_compute_crc32(view);
 }
 
+static App *get_app_from_view(HexView *view) {
+    if (!view) return NULL;
+    if (view->change_userdata) return (App *)view->change_userdata;
+    if (view->drawing_area) return (App *)g_object_get_data(G_OBJECT(view->drawing_area), "app");
+    return NULL;
+}
+
+static void on_menu_select_range(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    App *app = get_app_from_view(view);
+    if (app) {
+        app_show_select_range_dialog(app);
+    }
+}
+
 static void show_context_menu(HexView *view, GdkEventButton *event) {
     GtkWidget *menu = gtk_menu_new();
 
@@ -619,6 +636,13 @@ static void show_context_menu(HexView *view, GdkEventButton *event) {
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_copy);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_paste);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_del);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+
+    // Selection Range modal dialog
+    GtkWidget *m_sel_range = gtk_menu_item_new_with_label("Select Range...\tCtrl+E");
+    g_signal_connect(m_sel_range, "activate", G_CALLBACK(on_menu_select_range), view);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sel_range);
 
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
 
@@ -813,6 +837,12 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
         } else if (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0) {
             hex_view_zoom_reset(view);
             return TRUE;
+        } else if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_show_select_range_dialog(app);
+                return TRUE;
+            }
         }
     }
 

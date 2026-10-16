@@ -58,6 +58,7 @@ static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     GtkWidget *m_close = gtk_menu_item_new_with_label("Close Tab\tCtrl+W");
     GtkWidget *m_sep1 = gtk_separator_menu_item_new();
     GtkWidget *m_diff = gtk_menu_item_new_with_label("Compare / Diff Files...\tCtrl+D");
+    GtkWidget *m_sel_range = gtk_menu_item_new_with_label("Select Range...\tCtrl+E");
     GtkWidget *m_sep2 = gtk_separator_menu_item_new();
 
     // View panels
@@ -77,6 +78,7 @@ static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sep1);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_diff);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sel_range);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sep2);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_view_sidebar);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_view_di);
@@ -90,6 +92,7 @@ static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     g_signal_connect_swapped(m_saveas, "activate", G_CALLBACK(app_save_as_document), app);
     g_signal_connect_swapped(m_close, "activate", G_CALLBACK(app_close_active_document), app);
     g_signal_connect_swapped(m_diff, "activate", G_CALLBACK(app_show_diff_dialog), app);
+    g_signal_connect_swapped(m_sel_range, "activate", G_CALLBACK(app_show_select_range_dialog), app);
     g_signal_connect(m_view_sidebar, "activate", G_CALLBACK(on_toggle_sidebar), app);
     g_signal_connect_swapped(m_view_di, "toggled", G_CALLBACK(on_toggle_inspector), app);
     g_signal_connect_swapped(m_view_bc, "toggled", G_CALLBACK(on_toggle_baseconv), app);
@@ -185,6 +188,10 @@ app_toolbar_t *toolbar_create(App *app) {
     g_signal_connect_swapped(tb->btn_size, "clicked", G_CALLBACK(app_show_size_dialog), app);
     gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_size, FALSE, FALSE, 0);
 
+    tb->btn_select_range = create_toolbar_button("twin_selection.svg", "edit-select-all", "Select Range / Block (Ctrl+E)");
+    g_signal_connect_swapped(tb->btn_select_range, "clicked", G_CALLBACK(app_show_select_range_dialog), app);
+    gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_select_range, FALSE, FALSE, 0);
+
     sep = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
     gtk_box_pack_start(GTK_BOX(tb->toolbar), sep, FALSE, FALSE, 2);
 
@@ -256,6 +263,7 @@ void toolbar_update_state(app_toolbar_t *tb, App *app) {
     gtk_widget_set_sensitive(tb->btn_gap, has_doc);
     gtk_widget_set_sensitive(tb->btn_insert_file, has_doc);
     gtk_widget_set_sensitive(tb->btn_size, has_doc);
+    gtk_widget_set_sensitive(tb->btn_select_range, has_doc);
     gtk_widget_set_sensitive(tb->btn_diff, TRUE);
     gtk_widget_set_sensitive(tb->btn_inspector_toggle, TRUE);
     gtk_widget_set_sensitive(tb->btn_baseconv_toggle, TRUE);

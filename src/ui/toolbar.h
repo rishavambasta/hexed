@@ -25,6 +25,7 @@ typedef struct _app_toolbar_t {
     GtkWidget *btn_gap;
     GtkWidget *btn_insert_file;
     GtkWidget *btn_size;
+    GtkWidget *btn_select_range;
     GtkWidget *btn_diff;
     GtkWidget *btn_inspector_toggle;
     GtkWidget *btn_baseconv_toggle;

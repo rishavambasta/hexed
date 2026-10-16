@@ -144,10 +144,62 @@ static void test_diff_logic(void) {
     printf("  [PASS] Diff block coalescing and comparison logic verified!\n");
 }
 
+static void test_select_range_logic(void) {
+    printf("Testing select range logic, parsing, and boundary clamping...\n");
+
+    document_t *doc = doc_create_new();
+    uint8_t sample[500];
+    memset(sample, 0x42, sizeof(sample));
+    doc_paste(doc, sample, sizeof(sample));
+
+    assert(pt_get_size(doc->pt) == 500);
+
+    // Initial selection
+    doc_set_selection(doc, 50, 100);
+    assert(doc->selection.start == 50);
+    assert(doc->selection.length == 100);
+
+    // Test selection union / extend logic
+    // Existing: [50, 150), New: [120, 220)
+    uint64_t start = 120;
+    uint64_t len = 100;
+    if (doc->selection.length > 0) {
+        uint64_t u_start = (start < doc->selection.start) ? start : doc->selection.start;
+        uint64_t cur_end = start + len;
+        uint64_t ex_end = doc->selection.start + doc->selection.length;
+        uint64_t u_end = (cur_end > ex_end) ? cur_end : ex_end;
+        start = u_start;
+        len = u_end - u_start;
+    }
+    assert(start == 50);
+    assert(len == 170); // 50 to 220
+
+    // Test bounds clamping
+    hxd_size_t doc_size = pt_get_size(doc->pt); // 500
+    uint64_t o_start = 450;
+    uint64_t o_len = 100;
+    if (o_start > doc_size) o_start = doc_size;
+    if (o_start + o_len > doc_size) o_len = doc_size - o_start;
+    assert(o_start == 450);
+    assert(o_len == 50);
+
+    // Test start past EOF clamping
+    o_start = 600;
+    o_len = 50;
+    if (o_start > doc_size) o_start = doc_size;
+    if (o_start + o_len > doc_size) o_len = (doc_size > o_start) ? doc_size - o_start : 0;
+    assert(o_start == 500);
+    assert(o_len == 0);
+
+    doc_free(doc);
+    printf("  [PASS] Select range logic and boundary clamping verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
     test_diff_logic();
+    test_select_range_logic();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

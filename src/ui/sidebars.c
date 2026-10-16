@@ -313,6 +313,109 @@ static void on_history_selected(GtkTreeSelection *sel, gpointer user_data) {
 }
 
 /* =========================================================================
+ * Selection Panel Callbacks
+ * ========================================================================= */
+
+static uint64_t parse_sidebar_offset(const char *text, uint64_t def_val) {
+    if (!text) return def_val;
+    while (*text == ' ' || *text == '\t') text++;
+    if (*text == '\0') return def_val;
+
+    char *endptr = NULL;
+    uint64_t val = 0;
+    if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+        val = strtoull(text, &endptr, 16);
+    } else {
+        size_t len = strlen(text);
+        if (len > 0 && (text[len - 1] == 'h' || text[len - 1] == 'H')) {
+            val = strtoull(text, &endptr, 16);
+        } else {
+            val = strtoull(text, &endptr, 10);
+        }
+    }
+    return (endptr && endptr > text) ? val : def_val;
+}
+
+static void apply_sidebar_selection(Sidebars *sb) {
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    if (!app) return;
+    document_t *doc = app_get_active_document(app);
+    if (!doc) return;
+
+    hxd_size_t doc_size = pt_get_size(doc->pt);
+    uint64_t start = parse_sidebar_offset(gtk_entry_get_text(GTK_ENTRY(sb->sel_start_hex)), doc->selection.start);
+    uint64_t end = parse_sidebar_offset(gtk_entry_get_text(GTK_ENTRY(sb->sel_end_hex)), start);
+    uint64_t len = 0;
+    if (end >= start) {
+        len = end - start + 1;
+    } else {
+        len = parse_sidebar_offset(gtk_entry_get_text(GTK_ENTRY(sb->sel_len_hex)), 1);
+    }
+
+    if (start > doc_size) start = doc_size;
+    if (start + len > doc_size) len = (doc_size > start) ? (doc_size - start) : 0;
+
+    doc_set_cursor(doc, start, false);
+    doc_set_selection(doc, start, len);
+    if (app->active_view) {
+        hex_view_scroll_to_offset(app->active_view, start);
+    }
+    app_update_ui(app);
+}
+
+static void on_sel_apply_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    apply_sidebar_selection((Sidebars *)user_data);
+}
+
+static void on_sel_entry_activate(GtkEntry *entry, gpointer user_data) {
+    (void)entry;
+    apply_sidebar_selection((Sidebars *)user_data);
+}
+
+static void on_sel_dialog_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    if (app) {
+        app_show_select_range_dialog(app);
+    }
+}
+
+static void on_sel_all_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    if (!app) return;
+    document_t *doc = app_get_active_document(app);
+    if (!doc) return;
+    doc_select_all(doc);
+    app_update_ui(app);
+}
+
+static void on_sel_none_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    if (!app) return;
+    document_t *doc = app_get_active_document(app);
+    if (!doc) return;
+    doc_clear_selection(doc);
+    app_update_ui(app);
+}
+
+static void on_sel_invert_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    if (!app) return;
+    document_t *doc = app_get_active_document(app);
+    if (!doc) return;
+    doc_invert_selection(doc);
+    app_update_ui(app);
+}
+
+/* =========================================================================
  * Export Panel Callbacks
  * ========================================================================= */
 
@@ -675,16 +778,33 @@ Sidebars *sidebars_create(App *app) {
 
         gtk_box_pack_start(GTK_BOX(box), grid, FALSE, FALSE, 0);
 
+        GtkWidget *hb_apply = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+        GtkWidget *btn_apply = gtk_button_new_with_label("Apply Selection");
+        g_signal_connect(btn_apply, "clicked", G_CALLBACK(on_sel_apply_clicked), sb);
+        gtk_box_pack_start(GTK_BOX(hb_apply), btn_apply, TRUE, TRUE, 0);
+
+        GtkWidget *btn_dialog = gtk_button_new_with_label("Select Range... (Ctrl+E)");
+        g_signal_connect(btn_dialog, "clicked", G_CALLBACK(on_sel_dialog_clicked), sb);
+        gtk_box_pack_start(GTK_BOX(hb_apply), btn_dialog, TRUE, TRUE, 0);
+
+        gtk_box_pack_start(GTK_BOX(box), hb_apply, FALSE, FALSE, 0);
+
         GtkWidget *btn_all = gtk_button_new_with_label("Select All (Ctrl+A)");
-        g_signal_connect_swapped(btn_all, "clicked", G_CALLBACK(doc_select_all), app_get_active_document(app));
+        g_signal_connect(btn_all, "clicked", G_CALLBACK(on_sel_all_clicked), sb);
         GtkWidget *btn_none = gtk_button_new_with_label("Select None");
-        g_signal_connect_swapped(btn_none, "clicked", G_CALLBACK(doc_clear_selection), app_get_active_document(app));
+        g_signal_connect(btn_none, "clicked", G_CALLBACK(on_sel_none_clicked), sb);
         GtkWidget *btn_inv = gtk_button_new_with_label("Invert Selection");
-        g_signal_connect_swapped(btn_inv, "clicked", G_CALLBACK(doc_invert_selection), app_get_active_document(app));
+        g_signal_connect(btn_inv, "clicked", G_CALLBACK(on_sel_invert_clicked), sb);
 
         gtk_box_pack_start(GTK_BOX(box), btn_all, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(box), btn_none, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(box), btn_inv, FALSE, FALSE, 0);
+
+        g_signal_connect(sb->sel_start_hex, "activate", G_CALLBACK(on_sel_entry_activate), sb);
+        g_signal_connect(sb->sel_start_dec, "activate", G_CALLBACK(on_sel_entry_activate), sb);
+        g_signal_connect(sb->sel_end_hex, "activate", G_CALLBACK(on_sel_entry_activate), sb);
+        g_signal_connect(sb->sel_len_hex, "activate", G_CALLBACK(on_sel_entry_activate), sb);
+        g_signal_connect(sb->sel_len_dec, "activate", G_CALLBACK(on_sel_entry_activate), sb);
 
         gtk_notebook_append_page(GTK_NOTEBOOK(sb->right_notebook), box, gtk_label_new("Selection"));
     }

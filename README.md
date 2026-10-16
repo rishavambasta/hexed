@@ -34,6 +34,14 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - Right-click anywhere in the editor to open the contextual action menu.
   - Compute SHA-256 or CRC-32 on the selected byte range (or the entire file if no selection).
   - Shows result dialog with range info and decimal values, and automatically copies the hash to the system clipboard.
+- **Select Range / Block Selection Dialog & Sidebar**:
+  - Dedicated "Select Range / Block" modal dialog (`Ctrl + E`).
+  - Accessible via Toolbar (`twin_selection.svg`), Right-click Context Menu, Main Menu, and Right Sidebar Selection tab.
+  - Specify Start Offset, Selection Mode ("By End Offset" vs "By Length"), End Offset, and Length.
+  - Flexible number formats: Hex (`0x...` or trailing `h`/`H`) and Decimal with automatic two-way synchronization.
+  - "Extend existing selection" option to union with current selection.
+  - Quick Presets: `0 to EOF`, `0 to Cursor`, `Cursor to EOF`, `+256 B`, `+1 KB`, `+4 KB`, `+64 KB`.
+  - Sidebar Selection panel with `<Enter>` key apply and dedicated "Apply Selection" button.
 - **Multi-Document Tabbed Interface**:
   - Work with multiple open binary files concurrently.
   - Tab close buttons, dirty indicators (`*`), and title synchronisation.
