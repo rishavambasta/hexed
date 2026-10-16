@@ -415,6 +415,7 @@ void app_show_insert_dialog(App *app) { dialog_show_insert(app); }
 void app_show_gap_dialog(App *app) { dialog_show_gap(app); }
 void app_show_size_dialog(App *app) { dialog_show_size(app); }
 void app_show_insert_file_dialog(App *app) { dialog_show_insert_file(app); }
+void app_show_diff_dialog(App *app) { dialog_show_diff(app); }
 void app_show_settings_dialog(App *app) { dialog_show_settings(app); }
 void app_show_controls_dialog(App *app) { dialog_show_controls(app); }
 void app_show_about_dialog(App *app) { dialog_show_about(app); }

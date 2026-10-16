@@ -1,5 +1,6 @@
 #include "hex_view.h"
 #include "theme.h"
+#include "../core/checksums.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -341,6 +342,327 @@ static hxd_offset_t coords_to_offset(HexView *view, double x, double y, bool *ou
     return off;
 }
 
+/* =========================================================================
+ * Context Menu & Checksum Helpers
+ * ========================================================================= */
+
+static void show_checksum_result_dialog(GtkWidget *parent, const char *algo_name, hxd_range_t range, const char *result_hex, const char *extra_info) {
+    GtkWidget *dlg = gtk_dialog_new_with_buttons(
+        algo_name,
+        parent ? GTK_WINDOW(gtk_widget_get_toplevel(parent)) : NULL,
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "_Copy", GTK_RESPONSE_ACCEPT,
+        "_Close", GTK_RESPONSE_CLOSE,
+        NULL
+    );
+    gtk_window_set_default_size(GTK_WINDOW(dlg), 520, 180);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 16);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
+    gtk_container_add(GTK_CONTAINER(content), vbox);
+
+    // Header title
+    char title_buf[128];
+    snprintf(title_buf, sizeof(title_buf), "<b>%s Result</b>", algo_name);
+    GtkWidget *lbl_title = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(lbl_title), title_buf);
+    gtk_label_set_xalign(GTK_LABEL(lbl_title), 0.0);
+    gtk_box_pack_start(GTK_BOX(vbox), lbl_title, FALSE, FALSE, 0);
+
+    // Range info
+    char range_buf[128];
+    snprintf(range_buf, sizeof(range_buf), "Offset Range: 0x%08llX - 0x%08llX (%llu bytes)",
+             (unsigned long long)range.start,
+             (unsigned long long)(range.start + range.length),
+             (unsigned long long)range.length);
+    GtkWidget *lbl_range = gtk_label_new(range_buf);
+    gtk_label_set_xalign(GTK_LABEL(lbl_range), 0.0);
+    gtk_box_pack_start(GTK_BOX(vbox), lbl_range, FALSE, FALSE, 0);
+
+    // Text entry for checksum
+    GtkWidget *entry = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(entry), result_hex);
+    gtk_editable_set_editable(GTK_EDITABLE(entry), FALSE);
+    gtk_widget_set_can_focus(entry, TRUE);
+    gtk_box_pack_start(GTK_BOX(vbox), entry, FALSE, FALSE, 0);
+
+    if (extra_info && strlen(extra_info) > 0) {
+        GtkWidget *lbl_extra = gtk_label_new(extra_info);
+        gtk_label_set_xalign(GTK_LABEL(lbl_extra), 0.0);
+        gtk_box_pack_start(GTK_BOX(vbox), lbl_extra, FALSE, FALSE, 0);
+    }
+
+    // Copied feedback
+    GtkWidget *lbl_note = gtk_label_new("<small>✔ Copied to clipboard automatically</small>");
+    gtk_label_set_use_markup(GTK_LABEL(lbl_note), TRUE);
+    gtk_label_set_xalign(GTK_LABEL(lbl_note), 0.0);
+    gtk_box_pack_start(GTK_BOX(vbox), lbl_note, FALSE, FALSE, 0);
+
+    gtk_widget_show_all(dlg);
+
+    // Automatically copy to clipboard
+    gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), result_hex, -1);
+
+    if (gtk_dialog_run(GTK_DIALOG(dlg)) == GTK_RESPONSE_ACCEPT) {
+        gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), result_hex, -1);
+    }
+    gtk_widget_destroy(dlg);
+}
+
+void hex_view_compute_sha256(HexView *view) {
+    if (!view || !view->doc || !view->doc->pt) return;
+
+    hxd_range_t range;
+    if (view->doc->selection.length > 0) {
+        range = view->doc->selection;
+    } else {
+        range.start = 0;
+        range.length = pt_get_size(view->doc->pt);
+    }
+
+    checksum_list_t *list = checksums_calculate(view->doc->pt, range, view->doc->endian);
+    if (!list) return;
+
+    const char *sha256_hex = NULL;
+    for (size_t i = 0; i < list->count; i++) {
+        if (strcmp(list->items[i].id, "sha256") == 0) {
+            sha256_hex = list->items[i].result_hex;
+            break;
+        }
+    }
+
+    if (sha256_hex) {
+        show_checksum_result_dialog(view->drawing_area, "SHA-256", range, sha256_hex, NULL);
+    }
+
+    checksums_free(list);
+}
+
+void hex_view_compute_crc32(HexView *view) {
+    if (!view || !view->doc || !view->doc->pt) return;
+
+    hxd_range_t range;
+    if (view->doc->selection.length > 0) {
+        range = view->doc->selection;
+    } else {
+        range.start = 0;
+        range.length = pt_get_size(view->doc->pt);
+    }
+
+    checksum_list_t *list = checksums_calculate(view->doc->pt, range, view->doc->endian);
+    if (!list) return;
+
+    const char *crc32_hex = NULL;
+    const char *crc32_dec = NULL;
+    for (size_t i = 0; i < list->count; i++) {
+        if (strcmp(list->items[i].id, "crc32") == 0) {
+            crc32_hex = list->items[i].result_hex;
+            crc32_dec = list->items[i].result_dec;
+            break;
+        }
+    }
+
+    if (crc32_hex) {
+        char extra[160];
+        snprintf(extra, sizeof(extra), "Decimal value: %s", crc32_dec ? crc32_dec : "-");
+        show_checksum_result_dialog(view->drawing_area, "CRC-32 (IEEE 802.3)", range, crc32_hex, extra);
+    }
+
+    checksums_free(list);
+}
+
+static void on_menu_cut(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    if (!view || !view->doc || view->doc->selection.length == 0) return;
+    
+    // Copy
+    hxd_size_t len = view->doc->selection.length;
+    uint8_t *buf = malloc(len);
+    pt_read_bytes(view->doc->pt, view->doc->selection.start, buf, len, NULL);
+    char *hex_str = malloc(len * 3 + 1);
+    char *p = hex_str;
+    for (hxd_size_t i = 0; i < len; i++) {
+        p += sprintf(p, "%02X ", buf[i]);
+    }
+    if (len > 0) *(p - 1) = '\0';
+    else *p = '\0';
+    gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), hex_str, -1);
+    free(hex_str);
+    free(buf);
+
+    // Delete
+    doc_delete(view->doc);
+    update_scroll_adjustment(view);
+    notify_change(view);
+}
+
+static void on_menu_copy(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    if (!view || !view->doc || view->doc->selection.length == 0) return;
+
+    hxd_size_t len = view->doc->selection.length;
+    uint8_t *buf = malloc(len);
+    pt_read_bytes(view->doc->pt, view->doc->selection.start, buf, len, NULL);
+    char *hex_str = malloc(len * 3 + 1);
+    char *p = hex_str;
+    for (hxd_size_t i = 0; i < len; i++) {
+        p += sprintf(p, "%02X ", buf[i]);
+    }
+    if (len > 0) *(p - 1) = '\0';
+    else *p = '\0';
+    gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), hex_str, -1);
+    free(hex_str);
+    free(buf);
+}
+
+static void on_menu_paste(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    if (!view || !view->doc) return;
+
+    gchar *text = gtk_clipboard_wait_for_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD));
+    if (!text) return;
+
+    size_t text_len = strlen(text);
+    uint8_t *bytes = malloc(text_len + 1);
+    size_t num_bytes = 0;
+    const char *cur = text;
+    bool is_hex = true;
+    while (*cur) {
+        while (*cur && isspace((unsigned char)*cur)) cur++;
+        if (!*cur) break;
+        if (isxdigit((unsigned char)cur[0]) && isxdigit((unsigned char)cur[1])) {
+            char bstr[3] = { cur[0], cur[1], '\0' };
+            bytes[num_bytes++] = (uint8_t)strtoul(bstr, NULL, 16);
+            cur += 2;
+        } else {
+            is_hex = false;
+            break;
+        }
+    }
+
+    if (is_hex && num_bytes > 0) {
+        doc_paste(view->doc, bytes, num_bytes);
+    } else {
+        doc_paste(view->doc, (const uint8_t *)text, text_len);
+    }
+    free(bytes);
+    g_free(text);
+
+    update_scroll_adjustment(view);
+    notify_change(view);
+}
+
+static void on_menu_delete(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    if (!view || !view->doc) return;
+    doc_delete(view->doc);
+    update_scroll_adjustment(view);
+    notify_change(view);
+}
+
+static void on_menu_zoom_in(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    hex_view_zoom_in(view);
+}
+
+static void on_menu_zoom_out(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    hex_view_zoom_out(view);
+}
+
+static void on_menu_zoom_reset(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    hex_view_zoom_reset(view);
+}
+
+static void on_menu_sha256(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    hex_view_compute_sha256(view);
+}
+
+static void on_menu_crc32(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    hex_view_compute_crc32(view);
+}
+
+static void show_context_menu(HexView *view, GdkEventButton *event) {
+    GtkWidget *menu = gtk_menu_new();
+
+    bool has_sel = (view->doc && view->doc->selection.length > 0);
+    hxd_size_t range_len = has_sel ? view->doc->selection.length : (view->doc ? pt_get_size(view->doc->pt) : 0);
+
+    GtkWidget *m_cut = gtk_menu_item_new_with_label("Cut\tCtrl+X");
+    GtkWidget *m_copy = gtk_menu_item_new_with_label("Copy\tCtrl+C");
+    GtkWidget *m_paste = gtk_menu_item_new_with_label("Paste\tCtrl+V");
+    GtkWidget *m_del = gtk_menu_item_new_with_label("Delete\tDel");
+
+    gtk_widget_set_sensitive(m_cut, has_sel);
+    gtk_widget_set_sensitive(m_copy, has_sel);
+
+    g_signal_connect(m_cut, "activate", G_CALLBACK(on_menu_cut), view);
+    g_signal_connect(m_copy, "activate", G_CALLBACK(on_menu_copy), view);
+    g_signal_connect(m_paste, "activate", G_CALLBACK(on_menu_paste), view);
+    g_signal_connect(m_del, "activate", G_CALLBACK(on_menu_delete), view);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_cut);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_copy);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_paste);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_del);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+
+    // Checksums for range / selection
+    char sha_label[128], crc_label[128];
+    if (has_sel) {
+        snprintf(sha_label, sizeof(sha_label), "Compute SHA-256 (Selection: %llu bytes)", (unsigned long long)range_len);
+        snprintf(crc_label, sizeof(crc_label), "Compute CRC-32 (Selection: %llu bytes)", (unsigned long long)range_len);
+    } else {
+        snprintf(sha_label, sizeof(sha_label), "Compute SHA-256 (Entire File: %llu bytes)", (unsigned long long)range_len);
+        snprintf(crc_label, sizeof(crc_label), "Compute CRC-32 (Entire File: %llu bytes)", (unsigned long long)range_len);
+    }
+
+    GtkWidget *m_sha256 = gtk_menu_item_new_with_label(sha_label);
+    GtkWidget *m_crc32 = gtk_menu_item_new_with_label(crc_label);
+
+    g_signal_connect(m_sha256, "activate", G_CALLBACK(on_menu_sha256), view);
+    g_signal_connect(m_crc32, "activate", G_CALLBACK(on_menu_crc32), view);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sha256);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_crc32);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
+
+    // Zoom options
+    char zoom_lbl[64];
+    snprintf(zoom_lbl, sizeof(zoom_lbl), "Zoom In\tCtrl++ (%d pt)", view->font_size_pt + 1);
+    GtkWidget *m_zin = gtk_menu_item_new_with_label(zoom_lbl);
+    snprintf(zoom_lbl, sizeof(zoom_lbl), "Zoom Out\tCtrl+- (%d pt)", view->font_size_pt > 6 ? view->font_size_pt - 1 : 6);
+    GtkWidget *m_zout = gtk_menu_item_new_with_label(zoom_lbl);
+    GtkWidget *m_zreset = gtk_menu_item_new_with_label("Reset Zoom (100%)\tCtrl+0");
+
+    g_signal_connect(m_zin, "activate", G_CALLBACK(on_menu_zoom_in), view);
+    g_signal_connect(m_zout, "activate", G_CALLBACK(on_menu_zoom_out), view);
+    g_signal_connect(m_zreset, "activate", G_CALLBACK(on_menu_zoom_reset), view);
+
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_zin);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_zout);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_zreset);
+
+    gtk_widget_show_all(menu);
+    gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+}
+
 static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
     HexView *view = (HexView *)user_data;
     if (!view || !view->doc) return FALSE;
@@ -370,6 +692,29 @@ static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpoint
         }
 
         notify_change(view);
+        return TRUE;
+    } else if (event->button == 3) { // Right click
+        bool in_ascii = false;
+        int nibble = 0;
+        hxd_offset_t off = coords_to_offset(view, event->x, event->y, &in_ascii, &nibble);
+        hxd_size_t sz = pt_get_size(view->doc->pt);
+
+        bool inside_selection = false;
+        if (view->doc->selection.length > 0) {
+            hxd_offset_t sel_start = view->doc->selection.start;
+            hxd_offset_t sel_end = sel_start + view->doc->selection.length;
+            if (off >= sel_start && off < sel_end) {
+                inside_selection = true;
+            }
+        }
+
+        if (!inside_selection && off <= sz) {
+            doc_set_cursor(view->doc, off, in_ascii);
+            view->doc->cursor_nibble = nibble;
+            notify_change(view);
+        }
+
+        show_context_menu(view, event);
         return TRUE;
     }
     return FALSE;
@@ -409,6 +754,24 @@ static gboolean on_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer use
     HexView *view = (HexView *)user_data;
     if (!view || !view->v_adj) return FALSE;
 
+    if (event->state & GDK_CONTROL_MASK) {
+        if (event->direction == GDK_SCROLL_UP) {
+            hex_view_zoom_in(view);
+            return TRUE;
+        } else if (event->direction == GDK_SCROLL_DOWN) {
+            hex_view_zoom_out(view);
+            return TRUE;
+        } else if (event->direction == GDK_SCROLL_SMOOTH) {
+            gdouble dx, dy;
+            if (gdk_event_get_scroll_deltas((GdkEvent *)event, &dx, &dy)) {
+                if (dy < 0) hex_view_zoom_in(view);
+                else if (dy > 0) hex_view_zoom_out(view);
+                return TRUE;
+            }
+        }
+        return TRUE;
+    }
+
     double delta = 3.0;
     if (event->direction == GDK_SCROLL_UP) {
         double val = gtk_adjustment_get_value(view->v_adj) - delta;
@@ -421,6 +784,16 @@ static gboolean on_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer use
         if (val > max_val) val = max_val;
         gtk_adjustment_set_value(view->v_adj, val);
         return TRUE;
+    } else if (event->direction == GDK_SCROLL_SMOOTH) {
+        gdouble dx, dy;
+        if (gdk_event_get_scroll_deltas((GdkEvent *)event, &dx, &dy)) {
+            double val = gtk_adjustment_get_value(view->v_adj) + dy * delta;
+            double max_val = gtk_adjustment_get_upper(view->v_adj) - gtk_adjustment_get_page_size(view->v_adj);
+            if (val < 0) val = 0;
+            if (val > max_val) val = max_val;
+            gtk_adjustment_set_value(view->v_adj, val);
+            return TRUE;
+        }
     }
     return FALSE;
 }
@@ -429,6 +802,19 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     (void)widget;
     HexView *view = (HexView *)user_data;
     if (!view || !view->doc) return FALSE;
+
+    if (event->state & GDK_CONTROL_MASK) {
+        if (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_equal || event->keyval == GDK_KEY_KP_Add) {
+            hex_view_zoom_in(view);
+            return TRUE;
+        } else if (event->keyval == GDK_KEY_minus || event->keyval == GDK_KEY_underscore || event->keyval == GDK_KEY_KP_Subtract) {
+            hex_view_zoom_out(view);
+            return TRUE;
+        } else if (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0) {
+            hex_view_zoom_reset(view);
+            return TRUE;
+        }
+    }
 
     document_t *doc = view->doc;
     int bpr = doc->bytes_per_row;
@@ -590,6 +976,7 @@ HexView *hex_view_create(document_t *doc) {
     HexView *view = calloc(1, sizeof(HexView));
     view->doc = doc;
     view->font_desc = pango_font_description_from_string(DEFAULT_FONT);
+    view->font_size_pt = 10;
     view->column_interlacing = true;
     view->cross_highlighting = true;
     view->hex_case = HXD_HEX_UPPERCASE;
@@ -682,6 +1069,37 @@ void hex_view_set_bytes_per_row(HexView *view, int bpr) {
 
 void hex_view_refresh(HexView *view) {
     if (!view) return;
+    update_scroll_adjustment(view);
+    gtk_widget_queue_draw(view->drawing_area);
+}
+
+void hex_view_zoom_in(HexView *view) {
+    if (!view) return;
+    if (view->font_size_pt < 36) {
+        view->font_size_pt++;
+        pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
+        update_metrics(view);
+        update_scroll_adjustment(view);
+        gtk_widget_queue_draw(view->drawing_area);
+    }
+}
+
+void hex_view_zoom_out(HexView *view) {
+    if (!view) return;
+    if (view->font_size_pt > 6) {
+        view->font_size_pt--;
+        pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
+        update_metrics(view);
+        update_scroll_adjustment(view);
+        gtk_widget_queue_draw(view->drawing_area);
+    }
+}
+
+void hex_view_zoom_reset(HexView *view) {
+    if (!view) return;
+    view->font_size_pt = 10;
+    pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
+    update_metrics(view);
     update_scroll_adjustment(view);
     gtk_widget_queue_draw(view->drawing_area);
 }

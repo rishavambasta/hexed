@@ -76,6 +76,7 @@ void        app_show_insert_dialog(App *app);
 void        app_show_gap_dialog(App *app);
 void        app_show_size_dialog(App *app);
 void        app_show_insert_file_dialog(App *app);
+void        app_show_diff_dialog(App *app);
 void        app_show_settings_dialog(App *app);
 void        app_show_controls_dialog(App *app);
 void        app_show_about_dialog(App *app);

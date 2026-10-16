@@ -1,5 +1,6 @@
 #include "toolbar.h"
 #include "app.h"
+#include "sidebars.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -24,6 +25,27 @@ static GtkWidget *create_toolbar_button(const char *icon_file, const char *fallb
     return btn;
 }
 
+static void on_toggle_inspector(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    App *app = (App *)user_data;
+    if (!app || !app->sidebars) return;
+    sidebars_set_data_inspector_visible(app->sidebars, app, !app->sidebars->di_visible);
+}
+
+static void on_toggle_baseconv(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    App *app = (App *)user_data;
+    if (!app || !app->sidebars) return;
+    sidebars_set_base_converter_visible(app->sidebars, app, !app->sidebars->bc_visible);
+}
+
+static void on_toggle_sidebar(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    App *app = (App *)user_data;
+    if (!app || !app->sidebars) return;
+    sidebars_toggle_left_collapse(app->sidebars, app);
+}
+
 static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     App *app = (App *)user_data;
     GtkWidget *menu = gtk_menu_new();
@@ -35,6 +57,17 @@ static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     GtkWidget *m_saveas = gtk_menu_item_new_with_label("Save As...\tCtrl+Shift+S");
     GtkWidget *m_close = gtk_menu_item_new_with_label("Close Tab\tCtrl+W");
     GtkWidget *m_sep1 = gtk_separator_menu_item_new();
+    GtkWidget *m_diff = gtk_menu_item_new_with_label("Compare / Diff Files...\tCtrl+D");
+    GtkWidget *m_sep2 = gtk_separator_menu_item_new();
+
+    // View panels
+    GtkWidget *m_view_sidebar = gtk_menu_item_new_with_label("Toggle Left Sidebar\tCtrl+B");
+    GtkWidget *m_view_di = gtk_check_menu_item_new_with_label("Data Inspector");
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(m_view_di), app->sidebars ? app->sidebars->di_visible : TRUE);
+    GtkWidget *m_view_bc = gtk_check_menu_item_new_with_label("Base Converter");
+    gtk_check_menu_item_set_active(GTK_CHECK_MENU_ITEM(m_view_bc), app->sidebars ? app->sidebars->bc_visible : TRUE);
+
+    GtkWidget *m_sep3 = gtk_separator_menu_item_new();
     GtkWidget *m_exit = gtk_menu_item_new_with_label("Exit\tCtrl+Q");
 
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_new);
@@ -43,6 +76,12 @@ static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_saveas);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sep1);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_diff);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sep2);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_view_sidebar);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_view_di);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_view_bc);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sep3);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_exit);
 
     g_signal_connect_swapped(m_new, "activate", G_CALLBACK(app_new_document), app);
@@ -50,6 +89,10 @@ static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     g_signal_connect_swapped(m_save, "activate", G_CALLBACK(app_save_document), app);
     g_signal_connect_swapped(m_saveas, "activate", G_CALLBACK(app_save_as_document), app);
     g_signal_connect_swapped(m_close, "activate", G_CALLBACK(app_close_active_document), app);
+    g_signal_connect_swapped(m_diff, "activate", G_CALLBACK(app_show_diff_dialog), app);
+    g_signal_connect(m_view_sidebar, "activate", G_CALLBACK(on_toggle_sidebar), app);
+    g_signal_connect_swapped(m_view_di, "toggled", G_CALLBACK(on_toggle_inspector), app);
+    g_signal_connect_swapped(m_view_bc, "toggled", G_CALLBACK(on_toggle_baseconv), app);
     g_signal_connect_swapped(m_exit, "activate", G_CALLBACK(gtk_main_quit), NULL);
 
     gtk_widget_show_all(menu);
@@ -145,6 +188,22 @@ app_toolbar_t *toolbar_create(App *app) {
     sep = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
     gtk_box_pack_start(GTK_BOX(tb->toolbar), sep, FALSE, FALSE, 2);
 
+    // Diff / Comparison & Sidebar Panel Toggles
+    tb->btn_diff = create_toolbar_button("twin_compare.svg", "preferences-system", "Compare / Diff Files (Ctrl+D)");
+    g_signal_connect_swapped(tb->btn_diff, "clicked", G_CALLBACK(app_show_diff_dialog), app);
+    gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_diff, FALSE, FALSE, 0);
+
+    tb->btn_inspector_toggle = create_toolbar_button("twin_inspector.svg", "view-list-details", "Toggle Data Inspector Panel");
+    g_signal_connect(tb->btn_inspector_toggle, "clicked", G_CALLBACK(on_toggle_inspector), app);
+    gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_inspector_toggle, FALSE, FALSE, 0);
+
+    tb->btn_baseconv_toggle = create_toolbar_button("twin_baseconv2.svg", "accessories-calculator", "Toggle Base Converter Panel");
+    g_signal_connect(tb->btn_baseconv_toggle, "clicked", G_CALLBACK(on_toggle_baseconv), app);
+    gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_baseconv_toggle, FALSE, FALSE, 0);
+
+    sep = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
+    gtk_box_pack_start(GTK_BOX(tb->toolbar), sep, FALSE, FALSE, 2);
+
     // Mode Toggle Button (Ovr / Ins)
     tb->btn_mode = gtk_button_new();
     tb->lbl_mode = gtk_label_new("Ovr");
@@ -197,6 +256,9 @@ void toolbar_update_state(app_toolbar_t *tb, App *app) {
     gtk_widget_set_sensitive(tb->btn_gap, has_doc);
     gtk_widget_set_sensitive(tb->btn_insert_file, has_doc);
     gtk_widget_set_sensitive(tb->btn_size, has_doc);
+    gtk_widget_set_sensitive(tb->btn_diff, TRUE);
+    gtk_widget_set_sensitive(tb->btn_inspector_toggle, TRUE);
+    gtk_widget_set_sensitive(tb->btn_baseconv_toggle, TRUE);
 
     if (has_doc) {
         if (doc->edit_mode == HXD_MODE_INSERT) {

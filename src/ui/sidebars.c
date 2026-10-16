@@ -395,11 +395,57 @@ static void on_export_execute(GtkButton *btn, gpointer user_data) {
 }
 
 /* =========================================================================
+ * Closable Tab & Collapse Callbacks
+ * ========================================================================= */
+
+static void on_di_tab_close_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->left_notebook), "app");
+    sidebars_set_data_inspector_visible(sb, app, false);
+}
+
+static void on_bc_tab_close_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->left_notebook), "app");
+    sidebars_set_base_converter_visible(sb, app, false);
+}
+
+static void on_left_collapse_btn_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->left_notebook), "app");
+    sidebars_toggle_left_collapse(sb, app);
+}
+
+static GtkWidget *create_closable_tab_header(const char *title, GCallback on_close, gpointer user_data) {
+    GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    GtkWidget *lbl = gtk_label_new(title);
+    gtk_box_pack_start(GTK_BOX(box), lbl, TRUE, TRUE, 0);
+
+    GtkWidget *btn = gtk_button_new();
+    gtk_button_set_relief(GTK_BUTTON(btn), GTK_RELIEF_NONE);
+    GtkWidget *img = gtk_image_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_button_set_image(GTK_BUTTON(btn), img);
+    gtk_widget_set_tooltip_text(btn, "Close Tab");
+    g_signal_connect(btn, "clicked", on_close, user_data);
+    gtk_box_pack_start(GTK_BOX(box), btn, FALSE, FALSE, 0);
+
+    gtk_widget_show_all(box);
+    return box;
+}
+
+/* =========================================================================
  * Sidebars Construction
  * ========================================================================= */
 
 Sidebars *sidebars_create(App *app) {
     Sidebars *sb = calloc(1, sizeof(Sidebars));
+    sb->di_visible = true;
+    sb->bc_visible = true;
+    sb->left_collapsed = false;
+    sb->left_saved_position = 260;
 
     // -------------------------------------------------------------------------
     // LEFT NOTEBOOK (Data Inspector, Base Converter, Disk Editor)
@@ -408,9 +454,20 @@ Sidebars *sidebars_create(App *app) {
     gtk_notebook_set_tab_pos(GTK_NOTEBOOK(sb->left_notebook), GTK_POS_TOP);
     g_object_set_data(G_OBJECT(sb->left_notebook), "app", app);
 
+    // Collapse button on notebook tab bar
+    GtkWidget *btn_col = gtk_button_new();
+    gtk_button_set_relief(GTK_BUTTON(btn_col), GTK_RELIEF_NONE);
+    GtkWidget *col_img = gtk_image_new_from_icon_name("pan-start-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_button_set_image(GTK_BUTTON(btn_col), col_img);
+    gtk_widget_set_tooltip_text(btn_col, "Collapse Sidebar");
+    g_signal_connect(btn_col, "clicked", G_CALLBACK(on_left_collapse_btn_clicked), sb);
+    gtk_notebook_set_action_widget(GTK_NOTEBOOK(sb->left_notebook), btn_col, GTK_PACK_END);
+    gtk_widget_show_all(btn_col);
+
     // 1. Data Inspector Panel
     {
         GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+        sb->di_page = box;
 
         // Toolbar
         GtkWidget *tb = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
@@ -452,13 +509,15 @@ Sidebars *sidebars_create(App *app) {
         gtk_container_add(GTK_CONTAINER(scroll), sb->di_tree);
         gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
 
-        gtk_notebook_append_page(GTK_NOTEBOOK(sb->left_notebook), box, gtk_label_new("Data Inspector"));
+        GtkWidget *di_tab = create_closable_tab_header("Data Inspector", G_CALLBACK(on_di_tab_close_clicked), sb);
+        gtk_notebook_append_page(GTK_NOTEBOOK(sb->left_notebook), box, di_tab);
     }
 
     // 2. Base Converter Panel
     {
         GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
         gtk_container_set_border_width(GTK_CONTAINER(box), 8);
+        sb->bc_page = box;
 
         GtkWidget *grid = gtk_grid_new();
         gtk_grid_set_row_spacing(GTK_GRID(grid), 6);
@@ -493,7 +552,8 @@ Sidebars *sidebars_create(App *app) {
         gtk_box_pack_start(GTK_BOX(h_box), btn_clear, TRUE, TRUE, 0);
         gtk_box_pack_start(GTK_BOX(box), h_box, FALSE, FALSE, 4);
 
-        gtk_notebook_append_page(GTK_NOTEBOOK(sb->left_notebook), box, gtk_label_new("Base Converter"));
+        GtkWidget *bc_tab = create_closable_tab_header("Base Converter", G_CALLBACK(on_bc_tab_close_clicked), sb);
+        gtk_notebook_append_page(GTK_NOTEBOOK(sb->left_notebook), box, bc_tab);
     }
 
     // -------------------------------------------------------------------------
@@ -780,4 +840,73 @@ void sidebars_update(Sidebars *sb, App *app) {
                            3, i,
                            -1);
     }
+}
+
+void sidebars_set_data_inspector_visible(Sidebars *sb, App *app, bool visible) {
+    if (!sb) return;
+    sb->di_visible = visible;
+    if (sb->di_page) {
+        if (visible) {
+            gtk_widget_show(sb->di_page);
+            int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(sb->left_notebook), sb->di_page);
+            if (page_num >= 0) {
+                gtk_notebook_set_current_page(GTK_NOTEBOOK(sb->left_notebook), page_num);
+            }
+            if (sb->left_collapsed && app && app->paned_h1) {
+                sidebars_toggle_left_collapse(sb, app);
+            }
+        } else {
+            gtk_widget_hide(sb->di_page);
+            if (!sb->bc_visible && !sb->left_collapsed && app && app->paned_h1) {
+                sidebars_toggle_left_collapse(sb, app);
+            }
+        }
+    }
+}
+
+void sidebars_set_base_converter_visible(Sidebars *sb, App *app, bool visible) {
+    if (!sb) return;
+    sb->bc_visible = visible;
+    if (sb->bc_page) {
+        if (visible) {
+            gtk_widget_show(sb->bc_page);
+            int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(sb->left_notebook), sb->bc_page);
+            if (page_num >= 0) {
+                gtk_notebook_set_current_page(GTK_NOTEBOOK(sb->left_notebook), page_num);
+            }
+            if (sb->left_collapsed && app && app->paned_h1) {
+                sidebars_toggle_left_collapse(sb, app);
+            }
+        } else {
+            gtk_widget_hide(sb->bc_page);
+            if (!sb->di_visible && !sb->left_collapsed && app && app->paned_h1) {
+                sidebars_toggle_left_collapse(sb, app);
+            }
+        }
+    }
+}
+
+void sidebars_toggle_left_collapse(Sidebars *sb, App *app) {
+    if (!sb || !app || !app->paned_h1) return;
+
+    if (!sb->left_collapsed) {
+        // Collapse
+        int cur_pos = gtk_paned_get_position(GTK_PANED(app->paned_h1));
+        if (cur_pos > 30) sb->left_saved_position = cur_pos;
+        sb->left_collapsed = true;
+        gtk_paned_set_position(GTK_PANED(app->paned_h1), 0);
+    } else {
+        // Restore / Uncollapse
+        if (!sb->di_visible && !sb->bc_visible) {
+            // Restore at least one tab if all were closed
+            sidebars_set_data_inspector_visible(sb, app, true);
+        }
+        sb->left_collapsed = false;
+        int target_pos = (sb->left_saved_position > 50) ? sb->left_saved_position : 260;
+        gtk_paned_set_position(GTK_PANED(app->paned_h1), target_pos);
+    }
+}
+
+bool sidebars_is_left_collapsed(Sidebars *sb) {
+    return sb ? sb->left_collapsed : false;
 }

@@ -47,6 +47,8 @@ test: $(CORE_OBJS)
 	./$(BUILDDIR)/test_hex_records
 	$(CC) $(CFLAGS) tests/test_performance.c $(BUILDDIR)/core/piece_table.o -o $(BUILDDIR)/test_performance
 	./$(BUILDDIR)/test_performance
+	$(CC) $(CFLAGS) tests/test_new_features.c $(CORE_OBJS) -lm -o $(BUILDDIR)/test_new_features
+	./$(BUILDDIR)/test_new_features
 
 clean:
 	rm -rf $(BUILDDIR) $(BINDIR)

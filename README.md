@@ -15,6 +15,25 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - Native parsing and opening of `.hex`, `.ihex`, `.s19`, `.s28`, `.s37`, and `.srec` files.
   - Full gap preservation: non-contiguous memory blocks are maintained as sparse virtual regions (`PIECE_GAP`), visible in the UI and skipped during export.
   - Multi-target export: Intel HEX (I8HEX, I16HEX, I32HEX) and Motorola S-Record (S19, S28, S37) with custom headers.
+- **Interactive Zoom & Font Scaling**:
+  - `Ctrl + Mouse Wheel Scroll` zooms text in and out smoothly in real time.
+  - Keyboard shortcuts: `Ctrl + '+'` / `Ctrl + '='` to zoom in, `Ctrl + '-'` to zoom out, `Ctrl + '0'` to reset zoom (100%).
+  - Context menu zoom controls with live point size indicators.
+- **Collapsible & Closable Tool Panels**:
+  - Data Inspector and Base Converter tabs feature individual close buttons (`×`).
+  - Collapse button on the tab strip to instantly minimize the left sidebar.
+  - Reopen or toggle panels at any time from the Main Menu (`View -> Data Inspector / Base Converter`), toolbar buttons (`twin_inspector.svg`, `twin_baseconv2.svg`), or shortcut `Ctrl + B`.
+- **Dedicated Two-File Diff & Comparison Tool**:
+  - Compare any two files: pick from active tabs or browse from disk.
+  - Coalesces contiguous differing bytes into structured difference blocks with offsets, lengths, and hex/ASCII summaries.
+  - Synchronized side-by-side hex preview highlighting differing bytes.
+  - Next Difference (`Next Diff ▶`) and Previous Difference (`◀ Previous Diff`) navigation.
+  - `Jump to Diff in Editor` button to center and select the mismatch in the main editor.
+  - Accessible via Toolbar (`twin_compare.svg`), Main Menu (`Ctrl + D`), or the BottomBar panel.
+- **Context Menu Checksum Calculations**:
+  - Right-click anywhere in the editor to open the contextual action menu.
+  - Compute SHA-256 or CRC-32 on the selected byte range (or the entire file if no selection).
+  - Shows result dialog with range info and decimal values, and automatically copies the hash to the system clipboard.
 - **Multi-Document Tabbed Interface**:
   - Work with multiple open binary files concurrently.
   - Tab close buttons, dirty indicators (`*`), and title synchronisation.

@@ -11,6 +11,7 @@ void dialog_show_insert(App *app);
 void dialog_show_gap(App *app);
 void dialog_show_size(App *app);
 void dialog_show_insert_file(App *app);
+void dialog_show_diff(App *app);
 void dialog_show_settings(App *app);
 void dialog_show_controls(App *app);
 void dialog_show_about(App *app);

@@ -359,6 +359,10 @@ BottomBar *bottombar_create(App *app) {
         g_signal_connect(btn_cmp, "clicked", G_CALLBACK(on_fc_compare_clicked), bb);
         gtk_box_pack_start(GTK_BOX(hb), btn_cmp, FALSE, FALSE, 0);
 
+        GtkWidget *btn_full_diff = gtk_button_new_with_label("Full Diff Window...");
+        g_signal_connect_swapped(btn_full_diff, "clicked", G_CALLBACK(app_show_diff_dialog), app);
+        gtk_box_pack_start(GTK_BOX(hb), btn_full_diff, FALSE, FALSE, 0);
+
         gtk_box_pack_start(GTK_BOX(box), hb, FALSE, FALSE, 0);
 
         bb->fc_diff_store = gtk_list_store_new(4, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_UINT64);

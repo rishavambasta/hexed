@@ -10,6 +10,14 @@ typedef struct _Sidebars {
     GtkWidget *left_notebook;
     GtkWidget *right_notebook;
 
+    // Left state & pages
+    GtkWidget *di_page;
+    GtkWidget *bc_page;
+    bool       di_visible;
+    bool       bc_visible;
+    bool       left_collapsed;
+    int        left_saved_position;
+
     // Left: Data Inspector
     GtkWidget *di_tree;
     GtkListStore *di_store;
@@ -59,5 +67,9 @@ typedef struct _Sidebars {
 
 Sidebars *sidebars_create(App *app);
 void      sidebars_update(Sidebars *sb, App *app);
+void      sidebars_set_data_inspector_visible(Sidebars *sb, App *app, bool visible);
+void      sidebars_set_base_converter_visible(Sidebars *sb, App *app, bool visible);
+void      sidebars_toggle_left_collapse(Sidebars *sb, App *app);
+bool      sidebars_is_left_collapsed(Sidebars *sb);
 
 #endif // HXD_SIDEBARS_H

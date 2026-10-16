@@ -30,6 +30,8 @@ struct _HexView {
     int                       ascii_col_x;
     int                       ascii_col_w;
 
+    int                       font_size_pt;
+
     // View options
     bool                      column_interlacing;
     bool                      cross_highlighting;
@@ -58,5 +60,14 @@ void       hex_view_set_cross_highlighting(HexView *view, bool enable);
 void       hex_view_set_hex_case(HexView *view, hxd_hex_case_t hcase);
 void       hex_view_set_bytes_per_row(HexView *view, int bpr);
 void       hex_view_refresh(HexView *view);
+
+/* Zoom controls (Ctrl + Scroll / Ctrl +/-/0) */
+void       hex_view_zoom_in(HexView *view);
+void       hex_view_zoom_out(HexView *view);
+void       hex_view_zoom_reset(HexView *view);
+
+/* Context menu actions */
+void       hex_view_compute_sha256(HexView *view);
+void       hex_view_compute_crc32(HexView *view);
 
 #endif // HXD_HEX_VIEW_H
