@@ -19,6 +19,7 @@ typedef struct {
     int              count;
     int              capacity;
     int              current_index; // -1 if before first action, 0..count-1 for active state
+    int              saved_index;   // Checkpoint index where file was saved to disk (-1 if unsaved)
     bool             group_same;
 } history_t;
 

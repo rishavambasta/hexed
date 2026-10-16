@@ -91,6 +91,182 @@ void hex_view_scroll_to_offset(HexView *view, hxd_offset_t offset) {
     }
 }
 
+typedef struct {
+    double x;
+    double y;
+} DPoint;
+
+static void draw_rounded_polygon(cairo_t *cr, const DPoint *pts, int n, double radius) {
+    if (n < 3) return;
+
+    for (int i = 0; i < n; i++) {
+        DPoint prev = pts[(i - 1 + n) % n];
+        DPoint curr = pts[i];
+        DPoint next = pts[(i + 1) % n];
+
+        double d_in = hypot(curr.x - prev.x, curr.y - prev.y);
+        double d_out = hypot(next.x - curr.x, next.y - curr.y);
+        double r = radius;
+        if (0.45 * d_in < r) r = 0.45 * d_in;
+        if (0.45 * d_out < r) r = 0.45 * d_out;
+
+        double factor_in = (d_in > 1e-4) ? (r / d_in) : 0.0;
+        double factor_out = (d_out > 1e-4) ? (r / d_out) : 0.0;
+
+        DPoint p_in = {
+            curr.x + (prev.x - curr.x) * factor_in,
+            curr.y + (prev.y - curr.y) * factor_in
+        };
+        DPoint p_out = {
+            curr.x + (next.x - curr.x) * factor_out,
+            curr.y + (next.y - curr.y) * factor_out
+        };
+
+        if (i == 0) {
+            cairo_move_to(cr, p_in.x, p_in.y);
+        } else {
+            cairo_line_to(cr, p_in.x, p_in.y);
+        }
+        cairo_curve_to(cr, curr.x, curr.y, curr.x, curr.y, p_out.x, p_out.y);
+    }
+    cairo_close_path(cr);
+}
+
+static inline double hex_col_left(HexView *view, int col) {
+    return view->hex_col_x + col * (3 * view->char_width) + (col >= 8 ? view->char_width : 0) + 2.0;
+}
+
+static inline double hex_col_right(HexView *view, int col) {
+    return hex_col_left(view, col) + 2 * view->char_width + 4.0;
+}
+
+static inline double ascii_col_left(HexView *view, int col) {
+    return view->ascii_col_x + col * view->char_width + 4.0;
+}
+
+static inline double ascii_col_right(HexView *view, int col) {
+    return ascii_col_left(view, col) + view->char_width;
+}
+
+static void draw_selection_column_polygon(HexView *view, cairo_t *cr, bool is_hex, int first_line, int lines_to_draw) {
+    if (!view || !view->doc || view->doc->selection.length == 0) return;
+
+    int bpr = view->doc->bytes_per_row;
+    if (bpr <= 0) bpr = 16;
+
+    hxd_offset_t sel_start = view->doc->selection.start;
+    hxd_offset_t sel_end = sel_start + view->doc->selection.length - 1;
+
+    hxd_offset_t row_s = sel_start / bpr;
+    int col_s = (int)(sel_start % bpr);
+    hxd_offset_t row_e = sel_end / bpr;
+    int col_e = (int)(sel_end % bpr);
+
+    hxd_offset_t v_start = (hxd_offset_t)first_line;
+    hxd_offset_t v_end = (hxd_offset_t)(first_line + lines_to_draw);
+    if (row_e < v_start || row_s > v_end) return;
+
+    hxd_offset_t r_first = (row_s < v_start) ? v_start : row_s;
+    hxd_offset_t r_last  = (row_e > v_end)   ? v_end   : row_e;
+
+    int c_first = (r_first == row_s) ? col_s : 0;
+    int c_last  = (r_last == row_e)  ? col_e : bpr - 1;
+
+    #define GET_L(c) (is_hex ? hex_col_left(view, (c)) : ascii_col_left(view, (c)))
+    #define GET_R(c) (is_hex ? hex_col_right(view, (c)) : ascii_col_right(view, (c)))
+
+    double x_min = GET_L(0);
+    double x_max = GET_R(bpr - 1);
+    double x_s = GET_L(c_first);
+    double x_e = GET_R(c_last);
+
+    double y_top = view->header_height + (double)(r_first - v_start) * view->line_height + 1.0;
+    double y_bot = view->header_height + (double)(r_last - v_start + 1) * view->line_height - 1.0;
+
+    const double corner_radius = 3.5;
+
+    #define PAINT_NAVY_SELECTION() do { \
+        cairo_set_source_rgba(cr, 0.06, 0.20, 0.60, 0.25); \
+        cairo_fill_preserve(cr); \
+        cairo_set_source_rgba(cr, 0.12, 0.35, 0.85, 0.85); \
+        cairo_set_line_width(cr, 1.0); \
+        cairo_stroke(cr); \
+    } while (0)
+
+    if (r_first == r_last) {
+        // Single row selection
+        DPoint pts[4] = {
+            {x_s, y_top},
+            {x_e, y_top},
+            {x_e, y_bot},
+            {x_s, y_bot}
+        };
+        draw_rounded_polygon(cr, pts, 4, corner_radius);
+        PAINT_NAVY_SELECTION();
+    } else if (r_last == r_first + 1 && c_first > c_last) {
+        // Two rows that do not overlap horizontally -> two separate rounded boxes
+        double y_mid = view->header_height + (double)(r_first + 1 - v_start) * view->line_height;
+        DPoint pts1[4] = {
+            {x_s, y_top},
+            {x_max, y_top},
+            {x_max, y_mid - 0.5},
+            {x_s, y_mid - 0.5}
+        };
+        draw_rounded_polygon(cr, pts1, 4, corner_radius);
+        PAINT_NAVY_SELECTION();
+
+        DPoint pts2[4] = {
+            {x_min, y_mid + 0.5},
+            {x_e, y_mid + 0.5},
+            {x_e, y_bot},
+            {x_min, y_bot}
+        };
+        draw_rounded_polygon(cr, pts2, 4, corner_radius);
+        PAINT_NAVY_SELECTION();
+    } else {
+        // Connected multi-line polygon
+        double y_mid1 = view->header_height + (double)(r_first + 1 - v_start) * view->line_height;
+        double y_mid2 = view->header_height + (double)(r_last - v_start) * view->line_height;
+
+        DPoint pts[10];
+        int n = 0;
+
+        pts[n++] = (DPoint){x_s, y_top};
+        pts[n++] = (DPoint){x_max, y_top};
+
+        if (c_last < bpr - 1) {
+            pts[n++] = (DPoint){x_max, y_mid2};
+            pts[n++] = (DPoint){x_e, y_mid2};
+            pts[n++] = (DPoint){x_e, y_bot};
+        } else {
+            pts[n++] = (DPoint){x_max, y_bot};
+        }
+
+        pts[n++] = (DPoint){x_min, y_bot};
+
+        if (c_first > 0) {
+            pts[n++] = (DPoint){x_min, y_mid1};
+            pts[n++] = (DPoint){x_s, y_mid1};
+        }
+
+        draw_rounded_polygon(cr, pts, n, corner_radius);
+        PAINT_NAVY_SELECTION();
+    }
+
+    #undef GET_L
+    #undef GET_R
+    #undef PAINT_NAVY_SELECTION
+}
+
+static void draw_selection_layer(HexView *view, cairo_t *cr, int first_line, int lines_to_draw) {
+    if (!view || !view->doc || view->doc->selection.length == 0) return;
+
+    cairo_save(cr);
+    draw_selection_column_polygon(view, cr, true, first_line, lines_to_draw);
+    draw_selection_column_polygon(view, cr, false, first_line, lines_to_draw);
+    cairo_restore(cr);
+}
+
 static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     HexView *view = (HexView *)user_data;
     if (!view || !view->doc) return FALSE;
@@ -186,19 +362,23 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
         cairo_fill(cr);
     }
 
+    // Crosshair row highlight (rendered before selection layer so selection sits on top)
+    if (view->cross_highlighting && cur_row >= (hxd_offset_t)first_line && cur_row < (hxd_offset_t)(first_line + lines_to_draw)) {
+        int cry = view->header_height + (int)(cur_row - first_line) * view->line_height;
+        cairo_set_source_rgba(cr, tc->cross_bg_r, tc->cross_bg_g, tc->cross_bg_b, 0.4);
+        cairo_rectangle(cr, 0, cry, alloc.width, view->line_height);
+        cairo_fill(cr);
+    }
+
+    // 5. Draw smooth rounded navy blue selection polygon layer
+    draw_selection_layer(view, cr, first_line, lines_to_draw);
+
     for (int l = 0; l < lines_to_draw; l++) {
         uint64_t line_idx = first_line + l;
         hxd_offset_t line_offset = line_idx * bpr;
         if (line_offset > doc_size) break;
 
         int y = view->header_height + l * view->line_height;
-
-        // Crosshair row highlight
-        if (view->cross_highlighting && line_idx == (uint64_t)cur_row) {
-            cairo_set_source_rgba(cr, tc->cross_bg_r, tc->cross_bg_g, tc->cross_bg_b, 0.4);
-            cairo_rectangle(cr, 0, y, alloc.width, view->line_height);
-            cairo_fill(cr);
-        }
 
         // Draw offset string
         char offset_str[32];
@@ -225,15 +405,6 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
                                 byte_off >= view->doc->selection.start &&
                                 byte_off < view->doc->selection.start + view->doc->selection.length);
             bool is_cursor = (byte_off == view->doc->cursor_offset);
-
-            // Selection background
-            if (is_selected) {
-                cairo_set_source_rgb(cr, tc->sel_bg_r, tc->sel_bg_g, tc->sel_bg_b);
-                cairo_rectangle(cr, byte_x - 2, y + 1, 2 * view->char_width + 4, view->line_height - 2);
-                cairo_fill(cr);
-                cairo_rectangle(cr, ascii_x, y + 1, view->char_width, view->line_height - 2);
-                cairo_fill(cr);
-            }
 
             // Cursor highlight
             if (is_cursor) {
@@ -284,7 +455,11 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
                     if (is_cursor) {
                         cairo_set_source_rgb(cr, tc->cursor_text_r, tc->cursor_text_g, tc->cursor_text_b);
                     } else if (is_selected) {
-                        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                        if (tc->text_r > 0.5) {
+                            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                        } else {
+                            cairo_set_source_rgb(cr, 0.05, 0.12, 0.35);
+                        }
                     } else {
                         cairo_set_source_rgb(cr, tc->text_r, tc->text_g, tc->text_b);
                     }
@@ -970,6 +1145,12 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
             App *app = get_app_from_view(view);
             if (app) {
                 app_close_active_document(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_q || event->keyval == GDK_KEY_Q) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_quit(app);
                 return TRUE;
             }
         } else if (event->keyval == GDK_KEY_d || event->keyval == GDK_KEY_D) {

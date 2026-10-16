@@ -29,6 +29,7 @@ document_t *doc_create_new(void) {
     history_record(doc->history, HXD_ACTION_NEW, "New Document", 0, 0, doc->pt);
     doc->is_modified = false;
     doc->saved_history_index = doc->history->current_index;
+    doc->history->saved_index = doc->saved_history_index;
     return doc;
 }
 
@@ -63,6 +64,7 @@ document_t *doc_open_file(const char *path) {
     history_record(doc->history, HXD_ACTION_OPEN, "Open File", 0, pt_get_size(doc->pt), doc->pt);
     doc->is_modified = false;
     doc->saved_history_index = doc->history->current_index;
+    doc->history->saved_index = doc->saved_history_index;
     return doc;
 }
 
@@ -101,6 +103,7 @@ bool doc_save_as(document_t *doc, const char *new_path) {
 
         doc->is_modified = false;
         doc->saved_history_index = doc->history->current_index;
+        doc->history->saved_index = doc->saved_history_index;
     }
 
     return ok;

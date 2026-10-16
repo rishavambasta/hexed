@@ -102,7 +102,7 @@ static void on_menu_clicked(GtkButton *btn, gpointer user_data) {
     g_signal_connect(m_view_sidebar, "activate", G_CALLBACK(on_toggle_sidebar), app);
     g_signal_connect_swapped(m_view_di, "toggled", G_CALLBACK(on_toggle_inspector), app);
     g_signal_connect_swapped(m_view_bc, "toggled", G_CALLBACK(on_toggle_baseconv), app);
-    g_signal_connect_swapped(m_exit, "activate", G_CALLBACK(gtk_main_quit), NULL);
+    g_signal_connect_swapped(m_exit, "activate", G_CALLBACK(app_quit), app);
 
     gtk_widget_show_all(menu);
     gtk_menu_popup_at_widget(GTK_MENU(menu), GTK_WIDGET(btn), GDK_GRAVITY_SOUTH_WEST, GDK_GRAVITY_NORTH_WEST, NULL);

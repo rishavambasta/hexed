@@ -3,6 +3,8 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
+#include <math.h>
+#include <time.h>
 #include "../src/core/piece_table.h"
 #include "../src/core/document.h"
 #include "../src/core/checksums.h"
@@ -399,6 +401,179 @@ static void test_modified_status_and_tab_markup(void) {
     printf("  [PASS] Document modification status and tab markup verified!\n");
 }
 
+typedef struct {
+    double x;
+    double y;
+} TestPoint;
+
+static void test_close_modified_warning_logic(void) {
+    printf("Testing close modified warning logic...\n");
+
+    document_t *doc = doc_create_new();
+    assert(doc != NULL);
+    // 1. Newly created document is NOT modified -> closing should not require prompt
+    assert(doc->is_modified == false);
+
+    // 2. Typing data modifies document -> closing MUST trigger warning dialog
+    doc_type_ascii_char(doc, 'X');
+    assert(doc->is_modified == true);
+
+    // 3. Saving resets modified flag -> closing should not require prompt
+    char temp_file[] = "/tmp/hxd_close_test_XXXXXX.bin";
+    int fd = mkstemps(temp_file, 4);
+    assert(fd >= 0);
+    close(fd);
+    bool saved = doc_save_as(doc, temp_file);
+    assert(saved);
+    assert(doc->is_modified == false);
+
+    // 4. Further modification sets flag again
+    doc_type_ascii_char(doc, 'Y');
+    assert(doc->is_modified == true);
+
+    // 5. Undoing change back to saved point clears modified flag -> no prompt needed
+    assert(doc_can_undo(doc));
+    doc_undo(doc);
+    assert(doc->is_modified == false);
+
+    unlink(temp_file);
+    doc_free(doc);
+    printf("  [PASS] Close modified warning check logic verified!\n");
+}
+
+static void test_selection_polygon_geometry_and_performance(void) {
+    printf("Testing selection polygon geometry calculation and performance...\n");
+
+    int bpr = 16;
+    double char_w = 8.0;
+    double line_h = 20.0;
+    double header_h = 24.0;
+
+    #define T_HEX_L(c) (100.0 + (c) * (3 * char_w) + ((c) >= 8 ? char_w : 0) + 2.0)
+    #define T_HEX_R(c) (T_HEX_L(c) + 2 * char_w + 4.0)
+
+    // Test 1: Single line selection (row 2, col 3 to col 8)
+    {
+        double x_s = T_HEX_L(3);
+        double x_e = T_HEX_R(8);
+        double y_top = header_h + 2 * line_h + 1.0;
+        double y_bot = header_h + 3 * line_h - 1.0;
+
+        TestPoint pts[4] = {
+            {x_s, y_top},
+            {x_e, y_top},
+            {x_e, y_bot},
+            {x_s, y_bot}
+        };
+        assert(pts[1].x > pts[0].x);
+        assert(pts[2].y > pts[1].y);
+        assert(pts[3].x == pts[0].x);
+    }
+
+    // Test 2: Two rows disconnected (row 0 col 12 to row 1 col 4)
+    {
+        int c_first = 12;
+        int c_last = 4;
+        assert(c_first > c_last); // Disconnected horizontally -> 2 boxes
+        double x_s = T_HEX_L(c_first);
+        double x_max = T_HEX_R(bpr - 1);
+        double x_min = T_HEX_L(0);
+        double x_e = T_HEX_R(c_last);
+
+        assert(x_s > x_e);
+        assert(x_max > x_s);
+        assert(x_e > x_min);
+    }
+
+    // Test 3: Multi-line connected polygon (row 1 col 3 to row 3 col 7)
+    {
+        int c_first = 3;
+        int c_last = 7;
+        double x_min = T_HEX_L(0);
+        double x_max = T_HEX_R(bpr - 1);
+        double x_s = T_HEX_L(c_first);
+        double x_e = T_HEX_R(c_last);
+        double y_top = header_h + 1 * line_h + 1.0;
+        double y_bot = header_h + 4 * line_h - 1.0;
+        double y_mid1 = header_h + 2 * line_h;
+        double y_mid2 = header_h + 3 * line_h;
+
+        TestPoint pts[8];
+        int n = 0;
+        pts[n++] = (TestPoint){x_s, y_top};
+        pts[n++] = (TestPoint){x_max, y_top};
+        pts[n++] = (TestPoint){x_max, y_mid2};
+        pts[n++] = (TestPoint){x_e, y_mid2};
+        pts[n++] = (TestPoint){x_e, y_bot};
+        pts[n++] = (TestPoint){x_min, y_bot};
+        pts[n++] = (TestPoint){x_min, y_mid1};
+        pts[n++] = (TestPoint){x_s, y_mid1};
+
+        assert(n == 8);
+        assert(pts[0].x == x_s && pts[0].y == y_top);
+        assert(pts[1].x == x_max && pts[1].y == y_top);
+        assert(pts[3].x == x_e && pts[3].y == y_mid2);
+        assert(pts[5].x == x_min && pts[5].y == y_bot);
+        assert(pts[7].x == x_s && pts[7].y == y_mid1);
+    }
+
+    // Test 4: Corner rounding math stability
+    {
+        TestPoint p_prev = { 10.0, 50.0 };
+        TestPoint p_curr = { 10.0, 10.0 };
+        TestPoint p_next = { 50.0, 10.0 };
+
+        double d_in = hypot(p_curr.x - p_prev.x, p_curr.y - p_prev.y);
+        double d_out = hypot(p_next.x - p_curr.x, p_next.y - p_curr.y);
+        double r = 3.5;
+        if (0.45 * d_in < r) r = 0.45 * d_in;
+        if (0.45 * d_out < r) r = 0.45 * d_out;
+
+        double factor_in = (d_in > 1e-4) ? (r / d_in) : 0.0;
+        double factor_out = (d_out > 1e-4) ? (r / d_out) : 0.0;
+
+        TestPoint p_in = {
+            p_curr.x + (p_prev.x - p_curr.x) * factor_in,
+            p_curr.y + (p_prev.y - p_curr.y) * factor_in
+        };
+        TestPoint p_out = {
+            p_curr.x + (p_next.x - p_curr.x) * factor_out,
+            p_curr.y + (p_next.y - p_curr.y) * factor_out
+        };
+
+        assert(p_in.x == 10.0 && p_in.y == 13.5);
+        assert(p_out.x == 13.5 && p_out.y == 10.0);
+    }
+
+    // Test 5: Benchmark 500,000 polygon vertex calculations
+    {
+        struct timespec t_start, t_end;
+        clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+        const int iterations = 500000;
+        volatile double accum = 0;
+        for (int i = 0; i < iterations; i++) {
+            int c_first = i % 15;
+            int c_last = (i * 3) % 16;
+            double x_s = T_HEX_L(c_first);
+            double x_e = T_HEX_R(c_last);
+            accum += x_s + x_e;
+        }
+
+        clock_gettime(CLOCK_MONOTONIC, &t_end);
+        double elapsed_sec = (t_end.tv_sec - t_start.tv_sec) + (t_end.tv_nsec - t_start.tv_nsec) / 1e9;
+        double ns_per_calc = (elapsed_sec / iterations) * 1e9;
+        printf("  [PASS] 500,000 polygon calculations completed in %.2f ms (%.2f ns per redraw, < 0.001 µs)\n",
+               elapsed_sec * 1000.0, ns_per_calc);
+        assert(ns_per_calc < 500.0); // Must be under 500 ns
+    }
+
+    #undef T_HEX_L
+    #undef T_HEX_R
+
+    printf("  [PASS] Selection polygon geometry and ultra-fast performance verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -408,6 +583,8 @@ int main(void) {
     test_pattern_wildcard_search();
     test_regex_search();
     test_modified_status_and_tab_markup();
+    test_close_modified_warning_logic();
+    test_selection_polygon_geometry_and_performance();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

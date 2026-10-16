@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+static gboolean on_window_delete_event(GtkWidget *widget, GdkEvent *event, gpointer user_data);
+
 static void on_tab_switch(GtkNotebook *nb, GtkWidget *page, guint page_num, gpointer user_data) {
     (void)nb;
     (void)page;
@@ -29,22 +31,8 @@ static void on_hex_view_changed(HexView *view, void *userdata) {
 static void on_tab_close_clicked(GtkButton *btn, gpointer user_data) {
     HexView *view = (HexView *)user_data;
     App *app = (App *)g_object_get_data(G_OBJECT(btn), "app");
-    int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view));
-    if (page_num >= 0) {
-        gtk_notebook_remove_page(GTK_NOTEBOOK(app->doc_notebook), page_num);
-        app->hex_views = g_list_remove(app->hex_views, view);
-        doc_free(view->doc);
-        hex_view_free(view);
-
-        if (g_list_length(app->hex_views) > 0) {
-            int cur_page = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
-            app->active_view = (HexView *)g_list_nth_data(app->hex_views, cur_page >= 0 ? cur_page : 0);
-        } else {
-            app->active_view = NULL;
-            app_new_document(app);
-        }
-        app_update_ui(app);
-    }
+    if (!app || !view) return;
+    app_close_document_view(app, view, false);
 }
 
 static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *page, gint x, gint y, gpointer user_data) {
@@ -121,6 +109,7 @@ App *app_create(void) {
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(app->window), "Hex Editor Neo");
     gtk_window_set_default_size(GTK_WINDOW(app->window), 1260, 820);
+    g_signal_connect(app->window, "delete-event", G_CALLBACK(on_window_delete_event), app);
     g_signal_connect(app->window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
 
     app->main_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -373,24 +362,139 @@ void app_save_as_document(App *app) {
     gtk_widget_destroy(dialog);
 }
 
-void app_close_active_document(App *app) {
-    if (!app || !app->active_view) return;
-    int page = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
-    if (page >= 0) {
-        gtk_notebook_remove_page(GTK_NOTEBOOK(app->doc_notebook), page);
-        HexView *view = app->active_view;
-        app->hex_views = g_list_remove(app->hex_views, view);
-        doc_free(view->doc);
-        hex_view_free(view);
+bool app_close_document_view(App *app, HexView *view, bool is_quitting) {
+    if (!app || !view || !view->doc) return true;
 
-        if (g_list_length(app->hex_views) > 0) {
-            int cur_page = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
-            app->active_view = (HexView *)g_list_nth_data(app->hex_views, cur_page >= 0 ? cur_page : 0);
+    // Warn if document is modified
+    if (view->doc->is_modified) {
+        // Bring this document tab into focus so user sees what is being saved/closed
+        int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view));
+        if (page_num >= 0) {
+            gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), page_num);
+            app->active_view = view;
+            app_update_ui(app);
+        }
+
+        const char *name = view->doc->display_name ? view->doc->display_name : "Untitled";
+        GtkWidget *dialog = gtk_message_dialog_new(
+            GTK_WINDOW(app->window),
+            GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+            GTK_MESSAGE_WARNING,
+            GTK_BUTTONS_NONE,
+            "Save changes to \"%s\" before closing?",
+            name
+        );
+        gtk_message_dialog_format_secondary_text(
+            GTK_MESSAGE_DIALOG(dialog),
+            "If you close without saving, your changes will be permanently discarded."
+        );
+        gtk_dialog_add_button(GTK_DIALOG(dialog), "_Don't Save", GTK_RESPONSE_NO);
+        gtk_dialog_add_button(GTK_DIALOG(dialog), "_Cancel", GTK_RESPONSE_CANCEL);
+        gtk_dialog_add_button(GTK_DIALOG(dialog), "_Save", GTK_RESPONSE_YES);
+        gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_YES);
+
+        gint response = gtk_dialog_run(GTK_DIALOG(dialog));
+        gtk_widget_destroy(dialog);
+
+        if (response == GTK_RESPONSE_YES) {
+            if (view->doc->filepath) {
+                if (!doc_save(view->doc)) {
+                    GtkWidget *err_dialog = gtk_message_dialog_new(
+                        GTK_WINDOW(app->window),
+                        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+                        GTK_MESSAGE_ERROR,
+                        GTK_BUTTONS_OK,
+                        "Failed to save \"%s\".",
+                        name
+                    );
+                    gtk_dialog_run(GTK_DIALOG(err_dialog));
+                    gtk_widget_destroy(err_dialog);
+                    return false;
+                }
+            } else {
+                // Untitled document -> prompt Save As dialog
+                GtkWidget *save_dialog = gtk_file_chooser_dialog_new(
+                    "Save File As",
+                    GTK_WINDOW(app->window),
+                    GTK_FILE_CHOOSER_ACTION_SAVE,
+                    "_Cancel", GTK_RESPONSE_CANCEL,
+                    "_Save", GTK_RESPONSE_ACCEPT,
+                    NULL
+                );
+                gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(save_dialog), TRUE);
+                gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(save_dialog), name);
+
+                gint sa_response = gtk_dialog_run(GTK_DIALOG(save_dialog));
+                if (sa_response == GTK_RESPONSE_ACCEPT) {
+                    char *chosen = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(save_dialog));
+                    bool saved = doc_save_as(view->doc, chosen);
+                    g_free(chosen);
+                    gtk_widget_destroy(save_dialog);
+                    if (!saved) return false;
+                } else {
+                    gtk_widget_destroy(save_dialog);
+                    return false;
+                }
+            }
+        } else if (response == GTK_RESPONSE_NO) {
+            // User chose "Don't Save" -> discard changes and proceed with closing
         } else {
-            app->active_view = NULL;
+            // Cancel or window closed -> abort closing
+            return false;
+        }
+    }
+
+    int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view));
+    if (page_num >= 0) {
+        gtk_notebook_remove_page(GTK_NOTEBOOK(app->doc_notebook), page_num);
+    }
+    app->hex_views = g_list_remove(app->hex_views, view);
+    doc_free(view->doc);
+    hex_view_free(view);
+
+    if (g_list_length(app->hex_views) > 0) {
+        int cur_page = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
+        app->active_view = (HexView *)g_list_nth_data(app->hex_views, cur_page >= 0 ? cur_page : 0);
+    } else {
+        app->active_view = NULL;
+        if (!is_quitting) {
             app_new_document(app);
         }
-        app_update_ui(app);
+    }
+    app_update_ui(app);
+    return true;
+}
+
+void app_close_active_document(App *app) {
+    if (!app || !app->active_view) return;
+    app_close_document_view(app, app->active_view, false);
+}
+
+bool app_close_all_documents(App *app) {
+    if (!app) return true;
+    while (app->hex_views != NULL) {
+        HexView *v = (HexView *)app->hex_views->data;
+        if (!app_close_document_view(app, v, true)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static gboolean on_window_delete_event(GtkWidget *widget, GdkEvent *event, gpointer user_data) {
+    (void)widget;
+    (void)event;
+    App *app = (App *)user_data;
+    if (!app_close_all_documents(app)) {
+        return TRUE; // Cancel window close
+    }
+    return FALSE; // Allow close and trigger destroy
+}
+
+void app_quit(App *app) {
+    if (!app) return;
+    if (app_close_all_documents(app)) {
+        gtk_widget_destroy(app->window);
     }
 }
 

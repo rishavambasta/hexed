@@ -58,6 +58,9 @@ void        app_open_dialog(App *app);
 void        app_save_document(App *app);
 void        app_save_as_document(App *app);
 void        app_close_active_document(App *app);
+bool        app_close_document_view(App *app, HexView *view, bool is_quitting);
+bool        app_close_all_documents(App *app);
+void        app_quit(App *app);
 
 /* Editing commands */
 void        app_undo(App *app);

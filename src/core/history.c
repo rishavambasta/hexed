@@ -9,6 +9,7 @@ history_t *history_create(void) {
     h->capacity = INITIAL_CAPACITY;
     h->entries = calloc(h->capacity, sizeof(history_entry_t));
     h->current_index = -1;
+    h->saved_index = -1;
     h->count = 0;
     h->group_same = true;
     return h;
@@ -39,8 +40,8 @@ bool history_record(history_t *h, hxd_action_type_t type, const char *desc, hxd_
     }
     h->count = h->current_index + 1;
 
-    // Optional coalescing for sequential typing (WRITE 1 byte adjacent)
-    if (h->group_same && h->count > 0 && h->current_index >= 0) {
+    // Optional coalescing for sequential typing (WRITE 1 byte adjacent), unless this is a saved checkpoint
+    if (h->group_same && h->count > 0 && h->current_index >= 0 && h->current_index != h->saved_index) {
         history_entry_t *last = &h->entries[h->current_index];
         if (last->action_type == HXD_ACTION_WRITE && type == HXD_ACTION_WRITE) {
             if (off == last->offset + last->length) {
