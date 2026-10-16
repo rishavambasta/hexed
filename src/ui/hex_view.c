@@ -1195,6 +1195,14 @@ GtkWidget *hex_view_get_widget(HexView *view) {
     return view ? view->container : NULL;
 }
 
+void hex_view_set_tab_label(HexView *view, GtkWidget *label) {
+    if (view) view->tab_label = label;
+}
+
+GtkWidget *hex_view_get_tab_label(HexView *view) {
+    return view ? view->tab_label : NULL;
+}
+
 void hex_view_free(HexView *view) {
     if (!view) return;
     if (view->font_desc) pango_font_description_free(view->font_desc);

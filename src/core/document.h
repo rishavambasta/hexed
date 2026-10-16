@@ -25,6 +25,7 @@ typedef struct {
     hxd_edit_mode_t   edit_mode; // OVERWRITE or INSERT
 
     bool              is_modified;
+    int               saved_history_index;
     hxd_endianness_t  endian;
     int               bytes_per_row; // default 16
 

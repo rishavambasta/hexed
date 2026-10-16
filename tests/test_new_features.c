@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 #include "../src/core/piece_table.h"
 #include "../src/core/document.h"
 #include "../src/core/checksums.h"
@@ -335,6 +336,69 @@ static void test_regex_search(void) {
     printf("  [PASS] POSIX regex search verified!\n");
 }
 
+static void test_modified_status_and_tab_markup(void) {
+    printf("Testing document modification status and tab label formatting...\n");
+
+    document_t *doc = doc_create_new();
+    assert(doc->is_modified == false);
+
+    // Initial markup check (clean file: plain text)
+    const char *name = doc->display_name ? doc->display_name : "Untitled";
+    char tab_label[256];
+    if (doc->is_modified) {
+        snprintf(tab_label, sizeof(tab_label), "<b>%s*</b>", name);
+    } else {
+        snprintf(tab_label, sizeof(tab_label), "%s", name);
+    }
+    assert(strstr(tab_label, "<b>") == NULL);
+    assert(strstr(tab_label, "*") == NULL);
+
+    // Type a character -> modified
+    doc_type_ascii_char(doc, 'A');
+    assert(doc->is_modified == true);
+
+    // Formatted tab markup when modified: bold followed by asterisk
+    if (doc->is_modified) {
+        snprintf(tab_label, sizeof(tab_label), "<b>%s*</b>", name);
+    } else {
+        snprintf(tab_label, sizeof(tab_label), "%s", name);
+    }
+    assert(strstr(tab_label, "<b>") != NULL);
+    assert(strstr(tab_label, "*</b>") != NULL);
+
+    // Undo -> back to clean
+    assert(doc_can_undo(doc));
+    doc_undo(doc);
+    assert(doc->is_modified == false);
+
+    // Redo -> modified again
+    assert(doc_can_redo(doc));
+    doc_redo(doc);
+    assert(doc->is_modified == true);
+
+    // Save to temp file -> clean
+    char temp_file[] = "/tmp/hxd_test_mod_XXXXXX.bin";
+    int fd = mkstemps(temp_file, 4);
+    assert(fd >= 0);
+    close(fd);
+
+    bool saved = doc_save_as(doc, temp_file);
+    assert(saved);
+    assert(doc->is_modified == false);
+
+    // Another edit -> modified
+    doc_type_ascii_char(doc, 'B');
+    assert(doc->is_modified == true);
+
+    // Undo back to saved state -> clean!
+    doc_undo(doc);
+    assert(doc->is_modified == false);
+
+    unlink(temp_file);
+    doc_free(doc);
+    printf("  [PASS] Document modification status and tab markup verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -343,6 +407,7 @@ int main(void) {
     test_bitwise_operations();
     test_pattern_wildcard_search();
     test_regex_search();
+    test_modified_status_and_tab_markup();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

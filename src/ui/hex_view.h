@@ -14,6 +14,7 @@ struct _HexView {
     GtkWidget                *drawing_area;
     GtkAdjustment            *v_adj;
     GtkWidget                *v_scrollbar;
+    GtkWidget                *tab_label; // GtkLabel in notebook tab header
 
     document_t               *doc;
     PangoFontDescription    *font_desc;
@@ -50,6 +51,8 @@ HexView   *hex_view_create(document_t *doc);
 void       hex_view_set_document(HexView *view, document_t *doc);
 document_t*hex_view_get_document(HexView *view);
 GtkWidget *hex_view_get_widget(HexView *view);
+void       hex_view_set_tab_label(HexView *view, GtkWidget *label);
+GtkWidget *hex_view_get_tab_label(HexView *view);
 void       hex_view_free(HexView *view);
 
 /* View controls */

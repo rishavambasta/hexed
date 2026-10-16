@@ -27,6 +27,8 @@ document_t *doc_create_new(void) {
 
     // Initial action
     history_record(doc->history, HXD_ACTION_NEW, "New Document", 0, 0, doc->pt);
+    doc->is_modified = false;
+    doc->saved_history_index = doc->history->current_index;
     return doc;
 }
 
@@ -59,6 +61,8 @@ document_t *doc_open_file(const char *path) {
     doc->edit_mode = HXD_MODE_OVERWRITE;
 
     history_record(doc->history, HXD_ACTION_OPEN, "Open File", 0, pt_get_size(doc->pt), doc->pt);
+    doc->is_modified = false;
+    doc->saved_history_index = doc->history->current_index;
     return doc;
 }
 
@@ -96,6 +100,7 @@ bool doc_save_as(document_t *doc, const char *new_path) {
         doc->display_name = strdup(slash ? slash + 1 : new_path);
 
         doc->is_modified = false;
+        doc->saved_history_index = doc->history->current_index;
     }
 
     return ok;
@@ -362,7 +367,7 @@ bool doc_undo(document_t *doc) {
     if (prev) {
         pt_free(doc->pt);
         doc->pt = prev;
-        doc->is_modified = true;
+        doc->is_modified = (doc->history->current_index != doc->saved_history_index);
         if (doc->cursor_offset > pt_get_size(doc->pt)) {
             doc->cursor_offset = pt_get_size(doc->pt);
         }
@@ -377,7 +382,7 @@ bool doc_redo(document_t *doc) {
     if (next) {
         pt_free(doc->pt);
         doc->pt = next;
-        doc->is_modified = true;
+        doc->is_modified = (doc->history->current_index != doc->saved_history_index);
         if (doc->cursor_offset > pt_get_size(doc->pt)) {
             doc->cursor_offset = pt_get_size(doc->pt);
         }
@@ -392,7 +397,7 @@ bool doc_jump_to_history(document_t *doc, int history_index) {
     if (st) {
         pt_free(doc->pt);
         doc->pt = st;
-        doc->is_modified = true;
+        doc->is_modified = (doc->history->current_index != doc->saved_history_index);
         if (doc->cursor_offset > pt_get_size(doc->pt)) {
             doc->cursor_offset = pt_get_size(doc->pt);
         }

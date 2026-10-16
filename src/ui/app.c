@@ -84,7 +84,9 @@ static void add_document_tab(App *app, document_t *doc) {
     g_object_set_data(G_OBJECT(view->drawing_area), "app", app);
 
     GtkWidget *tab_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    GtkWidget *tab_label = gtk_label_new(doc->display_name);
+    GtkWidget *tab_label = gtk_label_new(NULL);
+    hex_view_set_tab_label(view, tab_label);
+    g_object_set_data(G_OBJECT(hex_view_get_widget(view)), "tab_label", tab_label);
     GtkWidget *close_btn = gtk_button_new_from_icon_name("window-close", GTK_ICON_SIZE_MENU);
     gtk_button_set_relief(GTK_BUTTON(close_btn), GTK_RELIEF_NONE);
     g_object_set_data(G_OBJECT(close_btn), "app", app);
@@ -226,6 +228,26 @@ void app_update_ui(App *app) {
     char title[256];
     snprintf(title, sizeof(title), "Hex Editor Neo - [%s%s]", doc->display_name, doc->is_modified ? "*" : "");
     gtk_window_set_title(GTK_WINDOW(app->window), title);
+
+    // Update all document tab labels: bold followed by "*" when modified
+    for (GList *l = app->hex_views; l != NULL; l = l->next) {
+        HexView *v = (HexView *)l->data;
+        if (!v || !v->doc) continue;
+        GtkWidget *lbl = hex_view_get_tab_label(v);
+        if (!lbl) lbl = (GtkWidget *)g_object_get_data(G_OBJECT(hex_view_get_widget(v)), "tab_label");
+        if (lbl && GTK_IS_LABEL(lbl)) {
+            const char *name = v->doc->display_name ? v->doc->display_name : "Untitled";
+            if (v->doc->is_modified) {
+                gchar *esc = g_markup_escape_text(name, -1);
+                char markup[512];
+                snprintf(markup, sizeof(markup), "<b>%s*</b>", esc);
+                gtk_label_set_markup(GTK_LABEL(lbl), markup);
+                g_free(esc);
+            } else {
+                gtk_label_set_text(GTK_LABEL(lbl), name);
+            }
+        }
+    }
 
     // Update status bar
     gtk_label_set_text(GTK_LABEL(app->lbl_status_edit), doc->is_modified ? "Modified" : "No changes");
