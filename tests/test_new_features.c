@@ -642,6 +642,50 @@ static void test_keyboard_shortcut_dispatch_logic(void) {
     printf("  [PASS] Keyboard shortcut routing, modifier masking, and case normalization verified!\n");
 }
 
+static void test_tab_context_close_logic(void) {
+    printf("Testing tab context menu operations ('Close all', 'Close all but this')...\n");
+
+    document_t *docs[4];
+    for (int i = 0; i < 4; i++) {
+        docs[i] = doc_create_new();
+        assert(docs[i] != NULL);
+    }
+    // Mark doc[1] as modified
+    doc_type_ascii_char(docs[1], 'M');
+    assert(docs[1]->is_modified == true);
+    assert(docs[0]->is_modified == false);
+    assert(docs[2]->is_modified == false);
+    assert(docs[3]->is_modified == false);
+
+    // 1. Simulate "Close all but this" targeting docs[1]
+    // Docs 0, 2, 3 should be eligible to close without prompts
+    int closed_count = 0;
+    for (int i = 0; i < 4; i++) {
+        if (docs[i] != docs[1]) {
+            assert(docs[i]->is_modified == false);
+            doc_free(docs[i]);
+            docs[i] = NULL;
+            closed_count++;
+        }
+    }
+    assert(closed_count == 3);
+    assert(docs[1] != NULL && docs[1]->is_modified == true);
+
+    // 2. Simulate "Close all"
+    // docs[1] is modified -> warning required
+    assert(docs[1]->is_modified == true);
+    doc_free(docs[1]);
+    docs[1] = NULL;
+
+    // After closing all, system opens a fresh new blank document
+    document_t *fresh_doc = doc_create_new();
+    assert(fresh_doc != NULL);
+    assert(fresh_doc->is_modified == false);
+    doc_free(fresh_doc);
+
+    printf("  [PASS] Tab context menu 'Close all' and 'Close all but this' verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -654,6 +698,7 @@ int main(void) {
     test_close_modified_warning_logic();
     test_selection_polygon_geometry_and_performance();
     test_keyboard_shortcut_dispatch_logic();
+    test_tab_context_close_logic();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

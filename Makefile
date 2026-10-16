@@ -18,13 +18,17 @@ UI_OBJS = $(patsubst $(UIDIR)/%.c,$(BUILDDIR)/ui/%.o,$(UI_SRCS))
 MAIN_OBJ = $(BUILDDIR)/main.o
 
 TARGET = $(BINDIR)/hxd
+ALIAS = $(BINDIR)/hexed
 
 .PHONY: all clean test
 
-all: $(TARGET)
+all: $(TARGET) $(ALIAS)
 
 $(TARGET): $(CORE_OBJS) $(UI_OBJS) $(MAIN_OBJ) | $(BINDIR)
 	$(CC) $^ $(GTK_LIBS) -o $@
+
+$(ALIAS): $(TARGET)
+	ln -sf hxd $(ALIAS)
 
 $(BUILDDIR)/core/%.o: $(COREDIR)/%.c | $(BUILDDIR)/core
 	$(CC) $(CFLAGS) $(GTK_CFLAGS) -c $< -o $@

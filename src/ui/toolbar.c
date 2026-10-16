@@ -243,7 +243,7 @@ app_toolbar_t *toolbar_create(App *app) {
     g_signal_connect_swapped(tb->btn_settings, "clicked", G_CALLBACK(app_show_settings_dialog), app);
     gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_settings, FALSE, FALSE, 0);
 
-    tb->btn_about = create_toolbar_button("helpabout.svg", "help-about", "About Hex Editor Neo");
+    tb->btn_about = create_toolbar_button("helpabout.svg", "help-about", "About hexed");
     g_signal_connect_swapped(tb->btn_about, "clicked", G_CALLBACK(app_show_about_dialog), app);
     gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_about, FALSE, FALSE, 0);
 

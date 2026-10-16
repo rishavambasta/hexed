@@ -1,6 +1,8 @@
-# Hex Editor Neo (Offline Cross-Platform C Clone)
+# hexed (v1.1)
 
-A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex editor clone of the **[myhex.online](https://myhex.online)** web hex editor, written in standard **C (C11)** with GTK3 and Cairo.
+**Author:** Rishav Ambasta
+
+A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex editor written in standard **C (C11)** with GTK3 and Cairo.
 
 ---
 
@@ -29,8 +31,11 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - Synchronized side-by-side hex preview highlighting differing bytes.
   - Next Difference (`Next Diff ▶`) and Previous Difference (`◀ Previous Diff`) navigation.
   - `Jump to Diff in Editor` button to center and select the mismatch in the main editor.
-  - **Meld-Style Side-by-Side Editor Diff Tab**: Click `Open Side-by-Side in Editor ⬌` to embed synchronized, side-by-side hex comparison directly into a notebook tab with split view toggle (Horizontal / Vertical), difference chunk counter, and `F7` / `Shift+F7` shortcut navigation.
+  - **Meld-Style Side-by-Side Editor Diff Tab**: Click the prominent green button (`Compare Side-by-Side ⬌`) to directly launch synchronized, side-by-side hex comparison into the editor view as default behavior with split view toggle (Horizontal / Vertical), difference chunk counter, and `F7` / `Shift+F7` shortcut navigation.
   - Accessible via Toolbar (`twin_compare.svg`), Main Menu (`Ctrl + D`), or the BottomBar panel.
+- **Tab Context Menu & Middle-Click Close**:
+  - Right-click any document or diff tab for instant context options: `Close Tab`, `Close all but this`, and `Close all` (with unsaved changes warnings).
+  - Middle-click directly closes any tab.
 - **Top Icons for Open & New**:
   - Prominent dedicated `tab-new` and `document-open` action icons docked directly on top of the notebook tab bar and toolbar.
 - **`Ctrl + G` Jump to Address / Offset**:

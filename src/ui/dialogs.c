@@ -1349,9 +1349,7 @@ static void on_diff_meld_clicked(GtkButton *btn, gpointer user_data) {
     diff_dialog_state_t *st = (diff_dialog_state_t *)user_data;
     if (!st || !st->app) return;
 
-    if (!st->pt1 || !st->pt2) {
-        on_diff_run_clicked(NULL, st);
-    }
+    on_diff_run_clicked(NULL, st);
     if (!st->pt1 || !st->pt2) return;
 
     document_t *doc1 = st->doc1;
@@ -1428,12 +1426,18 @@ void dialog_show_diff(App *app) {
     gtk_grid_attach(GTK_GRID(grid), st->entry_f2, 2, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), btn_br2, 3, 1, 1, 1);
 
-    // Run Compare button
-    GtkWidget *btn_run = gtk_button_new_with_label("Compare Files");
+    // Run Compare button (Green / Suggested Action -> default launch side-by-side in editor)
+    GtkWidget *btn_run = gtk_button_new_with_label("Compare Side-by-Side ⬌");
+    gtk_widget_set_tooltip_text(btn_run, "Compare files and launch side-by-side Meld-style view in main editor (Default)");
     GtkStyleContext *sc_btn = gtk_widget_get_style_context(btn_run);
     gtk_style_context_add_class(sc_btn, "suggested-action");
-    g_signal_connect(btn_run, "clicked", G_CALLBACK(on_diff_run_clicked), st);
-    gtk_grid_attach(GTK_GRID(grid), btn_run, 4, 0, 1, 2);
+    g_signal_connect(btn_run, "clicked", G_CALLBACK(on_diff_meld_clicked), st);
+    gtk_grid_attach(GTK_GRID(grid), btn_run, 4, 0, 1, 1);
+
+    GtkWidget *btn_list = gtk_button_new_with_label("Preview List Only");
+    gtk_widget_set_tooltip_text(btn_list, "Run comparison and inspect diff list inside this dialog");
+    g_signal_connect(btn_list, "clicked", G_CALLBACK(on_diff_run_clicked), st);
+    gtk_grid_attach(GTK_GRID(grid), btn_list, 4, 1, 1, 1);
 
     gtk_box_pack_start(GTK_BOX(main_vbox), grid, FALSE, FALSE, 0);
 
@@ -1705,10 +1709,13 @@ void dialog_show_controls(App *app) {
 void dialog_show_about(App *app) {
     GtkWidget *dlg = gtk_about_dialog_new();
     gtk_window_set_transient_for(GTK_WINDOW(dlg), GTK_WINDOW(app->window));
-    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dlg), "Hex Editor Neo (Offline Clone)");
-    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dlg), "1.0.0");
+    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dlg), "hexed");
+    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dlg), "1.1");
+    const char *authors[] = { "Rishav Ambasta", NULL };
+    gtk_about_dialog_set_authors(GTK_ABOUT_DIALOG(dlg), authors);
+    gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(dlg), "Copyright © 2026 Rishav Ambasta");
     gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(dlg),
-        "High-performance, cross-platform (Linux & Windows) offline GUI clone of the myhex.online web hex editor.\n\n"
+        "hexed: High-performance, cross-platform (Linux & Windows) offline GUI hex editor created by Rishav Ambasta.\n\n"
         "Features:\n"
         "• Virtual Piece Table Engine (instant gigabyte file opening & zero lag)\n"
         "• Native Intel HEX & Motorola S-record parsing with sparse gap preservation\n"
@@ -1717,7 +1724,7 @@ void dialog_show_about(App *app) {
         "• Checksums & Cryptographic Hashes (CRC-8/16/32/64, MD5, SHA-1, SHA-256)\n"
         "• Pattern Find & Replace across Hex, Strings, Floats, and Integers\n"
         "• Shannon Entropy & Byte Frequency Histogram Statistics\n"
-        "• File Comparison and Differencing Engine\n"
+        "• Side-by-Side Meld-Style File Comparison and Differencing Engine\n"
         "• Multi-format Export (Binary, Data URL Base64, C/C++ Snippets, Intel HEX, SREC)"
     );
     gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(dlg), "https://myhex.online");

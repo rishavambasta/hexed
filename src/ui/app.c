@@ -39,13 +39,80 @@ static void on_tab_close_clicked(GtkButton *btn, gpointer user_data) {
     app_close_document_view(app, view, false);
 }
 
+static void on_tab_menu_close(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    if (!view) return;
+    App *app = (App *)g_object_get_data(G_OBJECT(view->drawing_area), "app");
+    if (!app && view->change_userdata) app = (App *)view->change_userdata;
+    if (!app) return;
+    app_close_document_view(app, view, false);
+}
+
+static void on_tab_menu_close_others(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *keep_view = (HexView *)user_data;
+    if (!keep_view) return;
+    App *app = (App *)g_object_get_data(G_OBJECT(keep_view->drawing_area), "app");
+    if (!app && keep_view->change_userdata) app = (App *)keep_view->change_userdata;
+    if (!app) return;
+    app_close_all_except(app, keep_view);
+}
+
+static void on_tab_menu_close_all(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    App *app = (App *)user_data;
+    if (!app) return;
+    app_close_all(app);
+}
+
+static gboolean on_tab_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+    HexView *view = (HexView *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(widget), "app");
+    if (!app && view) app = (App *)g_object_get_data(G_OBJECT(view->drawing_area), "app");
+    if (!app && view && view->change_userdata) app = (App *)view->change_userdata;
+    if (!app || !view) return FALSE;
+
+    if (event->button == 3) { // Right click -> Context Menu
+        int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view));
+        if (page_num >= 0) {
+            gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), page_num);
+            app->active_view = view;
+            app_update_ui(app);
+        }
+
+        GtkWidget *menu = gtk_menu_new();
+
+        GtkWidget *m_close = gtk_menu_item_new_with_label("Close Tab");
+        GtkWidget *m_close_others = gtk_menu_item_new_with_label("Close all but this");
+        GtkWidget *m_close_all = gtk_menu_item_new_with_label("Close all");
+
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close_others);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close_all);
+
+        g_signal_connect(m_close, "activate", G_CALLBACK(on_tab_menu_close), view);
+        g_signal_connect(m_close_others, "activate", G_CALLBACK(on_tab_menu_close_others), view);
+        g_signal_connect(m_close_all, "activate", G_CALLBACK(on_tab_menu_close_all), app);
+
+        gtk_widget_show_all(menu);
+        gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+        return TRUE;
+    } else if (event->button == 2) { // Middle click -> Close Tab
+        app_close_document_view(app, view, false);
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
 static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *page, gint x, gint y, gpointer user_data) {
     (void)notebook;
     (void)page;
     App *app = (App *)user_data;
 
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(win), "Hex Editor Neo");
+    gtk_window_set_title(GTK_WINDOW(win), "hexed");
     gtk_window_set_default_size(GTK_WINDOW(win), 900, 620);
     g_signal_connect(win, "key-press-event", G_CALLBACK(on_app_window_key_press), app);
 
@@ -87,9 +154,17 @@ static void add_document_tab(App *app, document_t *doc) {
 
     gtk_box_pack_start(GTK_BOX(tab_box), tab_label, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(tab_box), close_btn, FALSE, FALSE, 0);
-    gtk_widget_show_all(tab_box);
 
-    int page = gtk_notebook_append_page(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view), tab_box);
+    GtkWidget *event_box = gtk_event_box_new();
+    gtk_event_box_set_visible_window(GTK_EVENT_BOX(event_box), FALSE);
+    gtk_widget_add_events(event_box, GDK_BUTTON_PRESS_MASK);
+    gtk_container_add(GTK_CONTAINER(event_box), tab_box);
+    g_object_set_data(G_OBJECT(event_box), "app", app);
+    g_object_set_data(G_OBJECT(event_box), "view", view);
+    g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_tab_button_press), view);
+    gtk_widget_show_all(event_box);
+
+    int page = gtk_notebook_append_page(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view), event_box);
     gtk_notebook_set_tab_detachable(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view), TRUE);
     gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view), TRUE);
     gtk_widget_show_all(hex_view_get_widget(view));
@@ -115,7 +190,7 @@ App *app_create(void) {
 
     // Main Window
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(app->window), "Hex Editor Neo");
+    gtk_window_set_title(GTK_WINDOW(app->window), "hexed");
     gtk_window_set_default_size(GTK_WINDOW(app->window), 1260, 820);
     g_signal_connect(app->window, "delete-event", G_CALLBACK(on_window_delete_event), app);
     g_signal_connect(app->window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
@@ -224,7 +299,7 @@ void app_update_ui(App *app) {
 
     // Update window title
     char title[256];
-    snprintf(title, sizeof(title), "Hex Editor Neo - [%s%s]", doc->display_name, doc->is_modified ? "*" : "");
+    snprintf(title, sizeof(title), "hexed - [%s%s]", doc->display_name, doc->is_modified ? "*" : "");
     gtk_window_set_title(GTK_WINDOW(app->window), title);
 
     // Update all document tab labels: bold followed by "*" when modified
@@ -714,6 +789,106 @@ static void on_editor_diff_close(GtkButton *btn, gpointer user_data) {
     free(st);
 }
 
+static gboolean on_diff_tab_button_press(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+    (void)widget;
+    app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
+    if (!st || !st->app) return FALSE;
+
+    if (event->button == 3) {
+        int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(st->app->doc_notebook), st->tab_content);
+        if (page_num >= 0) {
+            gtk_notebook_set_current_page(GTK_NOTEBOOK(st->app->doc_notebook), page_num);
+        }
+
+        GtkWidget *menu = gtk_menu_new();
+        GtkWidget *m_close = gtk_menu_item_new_with_label("Close Diff");
+        GtkWidget *m_close_all = gtk_menu_item_new_with_label("Close all");
+
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close_all);
+
+        g_signal_connect_swapped(m_close, "activate", G_CALLBACK(on_editor_diff_close), st);
+        g_signal_connect_swapped(m_close_all, "activate", G_CALLBACK(app_close_all), st->app);
+
+        gtk_widget_show_all(menu);
+        gtk_menu_popup_at_pointer(GTK_MENU(menu), (GdkEvent *)event);
+        return TRUE;
+    } else if (event->button == 2) {
+        on_editor_diff_close(NULL, st);
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+void app_close_all(App *app) {
+    if (!app) return;
+
+    // 1. Close any diff tabs
+    int n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(app->doc_notebook));
+    for (int i = n_pages - 1; i >= 0; i--) {
+        GtkWidget *page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(app->doc_notebook), i);
+        if (page) {
+            void *st = g_object_get_data(G_OBJECT(page), "diff_state");
+            if (st) {
+                on_editor_diff_close(NULL, st);
+            }
+        }
+    }
+
+    // 2. Close all document tabs
+    while (app->hex_views != NULL) {
+        HexView *v = (HexView *)app->hex_views->data;
+        if (!app_close_document_view(app, v, true)) {
+            break;
+        }
+    }
+
+    // If all views were closed, start a new blank document
+    if (app->hex_views == NULL) {
+        app_new_document(app);
+    }
+}
+
+void app_close_all_except(App *app, HexView *keep_view) {
+    if (!app || !keep_view) return;
+
+    // 1. Close any diff tabs
+    int n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(app->doc_notebook));
+    for (int i = n_pages - 1; i >= 0; i--) {
+        GtkWidget *page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(app->doc_notebook), i);
+        if (page) {
+            void *st = g_object_get_data(G_OBJECT(page), "diff_state");
+            if (st) {
+                on_editor_diff_close(NULL, st);
+            }
+        }
+    }
+
+    // 2. Close other document tabs
+    GList *cur = app->hex_views;
+    while (cur != NULL) {
+        HexView *v = (HexView *)cur->data;
+        cur = cur->next;
+        if (v != keep_view) {
+            if (!app_close_document_view(app, v, false)) {
+                break;
+            }
+        }
+    }
+
+    // Keep target view active
+    int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(keep_view));
+    if (page_num >= 0) {
+        gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), page_num);
+        app->active_view = keep_view;
+        app_update_ui(app);
+        if (keep_view->drawing_area) {
+            gtk_widget_grab_focus(keep_view->drawing_area);
+        }
+    }
+}
+
 void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
     if (!app || !doc1 || !doc2) return;
 
@@ -854,9 +1029,15 @@ void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
     g_signal_connect(tclose_btn, "clicked", G_CALLBACK(on_editor_diff_close), st);
     gtk_box_pack_start(GTK_BOX(tab_box), tab_label, TRUE, TRUE, 0);
     gtk_box_pack_start(GTK_BOX(tab_box), tclose_btn, FALSE, FALSE, 0);
-    gtk_widget_show_all(tab_box);
 
-    int page = gtk_notebook_append_page(GTK_NOTEBOOK(app->doc_notebook), vbox, tab_box);
+    GtkWidget *event_box = gtk_event_box_new();
+    gtk_event_box_set_visible_window(GTK_EVENT_BOX(event_box), FALSE);
+    gtk_widget_add_events(event_box, GDK_BUTTON_PRESS_MASK);
+    gtk_container_add(GTK_CONTAINER(event_box), tab_box);
+    g_signal_connect(event_box, "button-press-event", G_CALLBACK(on_diff_tab_button_press), st);
+    gtk_widget_show_all(event_box);
+
+    int page = gtk_notebook_append_page(GTK_NOTEBOOK(app->doc_notebook), vbox, event_box);
     gtk_notebook_set_tab_detachable(GTK_NOTEBOOK(app->doc_notebook), vbox, TRUE);
     gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(app->doc_notebook), vbox, TRUE);
     gtk_widget_show_all(vbox);
