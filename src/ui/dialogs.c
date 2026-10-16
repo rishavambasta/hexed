@@ -516,6 +516,415 @@ void dialog_show_select_range(App *app) {
 }
 
 /* =========================================================================
+ * Goto / Jump to Address Dialog (Ctrl+G)
+ * ========================================================================= */
+
+typedef struct {
+    App          *app;
+    document_t   *doc;
+    hxd_size_t    doc_size;
+    hxd_offset_t  cursor_offset;
+    GtkWidget    *dlg;
+    GtkWidget    *entry_offset;
+    GtkWidget    *radio_abs;
+    GtkWidget    *radio_rel;
+    GtkWidget    *radio_end;
+    GtkWidget    *radio_hex;
+    GtkWidget    *radio_dec;
+    GtkWidget    *lbl_status;
+} goto_dialog_state_t;
+
+static void goto_dialog_update_preview(goto_dialog_state_t *st) {
+    if (!st || !st->entry_offset || !st->lbl_status) return;
+    const char *text = gtk_entry_get_text(GTK_ENTRY(st->entry_offset));
+    bool is_dec = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_dec));
+
+    uint64_t raw_val = 0;
+    if (text && strlen(text) > 0) {
+        if (is_dec) {
+            raw_val = strtoull(text, NULL, 10);
+        } else {
+            raw_val = parse_offset_string(text, 0);
+        }
+    }
+
+    int mode = 0; // 0 = abs, 1 = rel, 2 = end
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_rel))) mode = 1;
+    else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_end))) mode = 2;
+
+    int64_t target = 0;
+    if (mode == 0) {
+        target = (int64_t)raw_val;
+    } else if (mode == 1) {
+        target = (int64_t)st->cursor_offset + (int64_t)raw_val;
+    } else {
+        target = (int64_t)st->doc_size - (int64_t)raw_val;
+    }
+
+    bool out_of_bounds = false;
+    if (target < 0) {
+        target = 0;
+        out_of_bounds = true;
+    }
+    if ((hxd_size_t)target > st->doc_size) {
+        target = st->doc_size;
+        out_of_bounds = true;
+    }
+
+    char stat_str[256];
+    if (out_of_bounds) {
+        snprintf(stat_str, sizeof(stat_str),
+                 "<span color='#f59e0b'>Target (clamped): <b>0x%llX (%lld)</b></span> | File size: 0x%llX (%llu B)",
+                 (unsigned long long)target, (long long)target,
+                 (unsigned long long)st->doc_size, (unsigned long long)st->doc_size);
+    } else {
+        snprintf(stat_str, sizeof(stat_str),
+                 "Target Offset: <b>0x%llX (%lld)</b> | File bounds: 0x0 .. 0x%llX",
+                 (unsigned long long)target, (long long)target, (unsigned long long)st->doc_size);
+    }
+    gtk_label_set_markup(GTK_LABEL(st->lbl_status), stat_str);
+}
+
+static void on_goto_entry_changed(GtkEditable *editable, gpointer user_data) {
+    (void)editable;
+    goto_dialog_update_preview((goto_dialog_state_t *)user_data);
+}
+
+static void on_goto_radio_toggled(GtkToggleButton *btn, gpointer user_data) {
+    (void)btn;
+    goto_dialog_update_preview((goto_dialog_state_t *)user_data);
+}
+
+void dialog_show_goto(App *app) {
+    document_t *doc = app_get_active_document(app);
+    if (!doc) return;
+
+    goto_dialog_state_t st;
+    memset(&st, 0, sizeof(st));
+    st.app = app;
+    st.doc = doc;
+    st.doc_size = pt_get_size(doc->pt);
+    st.cursor_offset = doc->cursor_offset;
+
+    st.dlg = gtk_dialog_new_with_buttons(
+        "Go to Address / Offset (Ctrl+G)",
+        GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Go To", GTK_RESPONSE_OK,
+        NULL
+    );
+    gtk_dialog_set_default_response(GTK_DIALOG(st.dlg), GTK_RESPONSE_OK);
+    gtk_window_set_default_size(GTK_WINDOW(st.dlg), 440, 260);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(st.dlg));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 12);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_container_add(GTK_CONTAINER(content), vbox);
+
+    // Entry box
+    GtkWidget *hb_entry = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_box_pack_start(GTK_BOX(hb_entry), gtk_label_new("Address / Offset:"), FALSE, FALSE, 0);
+    st.entry_offset = gtk_entry_new();
+    char cur_str[32];
+    snprintf(cur_str, sizeof(cur_str), "0x%llX", (unsigned long long)st.cursor_offset);
+    gtk_entry_set_text(GTK_ENTRY(st.entry_offset), cur_str);
+    gtk_entry_set_activates_default(GTK_ENTRY(st.entry_offset), TRUE);
+    g_signal_connect(st.entry_offset, "changed", G_CALLBACK(on_goto_entry_changed), &st);
+    gtk_box_pack_start(GTK_BOX(hb_entry), st.entry_offset, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), hb_entry, FALSE, FALSE, 0);
+
+    // Number base frame
+    GtkWidget *hb_base = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+    st.radio_hex = gtk_radio_button_new_with_label(NULL, "Hexadecimal (0x / h)");
+    st.radio_dec = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_hex), "Decimal");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_hex), TRUE);
+    g_signal_connect(st.radio_hex, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
+    g_signal_connect(st.radio_dec, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
+    gtk_box_pack_start(GTK_BOX(hb_base), st.radio_hex, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(hb_base), st.radio_dec, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), hb_base, FALSE, FALSE, 0);
+
+    // Mode frame
+    GtkWidget *f_mode = gtk_frame_new("Origin / Jump Mode");
+    GtkWidget *vbox_mode = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
+    gtk_container_set_border_width(GTK_CONTAINER(vbox_mode), 6);
+    gtk_container_add(GTK_CONTAINER(f_mode), vbox_mode);
+
+    st.radio_abs = gtk_radio_button_new_with_label(NULL, "Beginning of file (Absolute)");
+    st.radio_rel = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_abs), "Current position (Relative +/-)");
+    st.radio_end = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_abs), "End of file (Backwards -)");
+    g_signal_connect(st.radio_abs, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
+    g_signal_connect(st.radio_rel, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
+    g_signal_connect(st.radio_end, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
+    gtk_box_pack_start(GTK_BOX(vbox_mode), st.radio_abs, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox_mode), st.radio_rel, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox_mode), st.radio_end, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), f_mode, FALSE, FALSE, 0);
+
+    // Status / target label
+    st.lbl_status = gtk_label_new(NULL);
+    gtk_label_set_xalign(GTK_LABEL(st.lbl_status), 0.0);
+    gtk_box_pack_start(GTK_BOX(vbox), st.lbl_status, FALSE, FALSE, 4);
+
+    goto_dialog_update_preview(&st);
+
+    gtk_widget_show_all(st.dlg);
+
+    if (gtk_dialog_run(GTK_DIALOG(st.dlg)) == GTK_RESPONSE_OK) {
+        const char *text = gtk_entry_get_text(GTK_ENTRY(st.entry_offset));
+        bool is_dec = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_dec));
+        uint64_t raw_val = 0;
+        if (text && strlen(text) > 0) {
+            if (is_dec) raw_val = strtoull(text, NULL, 10);
+            else raw_val = parse_offset_string(text, 0);
+        }
+
+        int mode = 0;
+        if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_rel))) mode = 1;
+        else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_end))) mode = 2;
+
+        int64_t target = 0;
+        if (mode == 0) target = (int64_t)raw_val;
+        else if (mode == 1) target = (int64_t)st.cursor_offset + (int64_t)raw_val;
+        else target = (int64_t)st.doc_size - (int64_t)raw_val;
+
+        if (target < 0) target = 0;
+        if ((hxd_size_t)target > st.doc_size) target = st.doc_size;
+
+        doc_set_cursor(doc, (hxd_offset_t)target, false);
+        doc_clear_selection(doc);
+        if (app->active_view) {
+            hex_view_scroll_to_offset(app->active_view, (hxd_offset_t)target);
+        }
+        app_update_ui(app);
+    }
+
+    gtk_widget_destroy(st.dlg);
+}
+
+/* =========================================================================
+ * Bitwise Operations Dialog (AND, OR, NOT, XOR)
+ * ========================================================================= */
+
+typedef struct {
+    App        *app;
+    document_t *doc;
+    GtkWidget  *dlg;
+    GtkWidget  *radio_not;
+    GtkWidget  *radio_and;
+    GtkWidget  *radio_or;
+    GtkWidget  *radio_xor;
+    GtkWidget  *entry_operand;
+    GtkWidget  *lbl_operand_title;
+    GtkWidget  *radio_sel;
+    GtkWidget  *radio_all;
+    GtkWidget  *lbl_preview;
+} bitwise_dialog_state_t;
+
+static void on_bw_preset_clicked(GtkButton *btn, gpointer user_data) {
+    bitwise_dialog_state_t *st = (bitwise_dialog_state_t *)user_data;
+    const char *lbl = gtk_button_get_label(btn);
+    gtk_entry_set_text(GTK_ENTRY(st->entry_operand), lbl);
+}
+
+static void bitwise_dialog_update_preview(bitwise_dialog_state_t *st) {
+    if (!st || !st->entry_operand || !st->lbl_preview) return;
+
+    bool is_not = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_not));
+    gtk_widget_set_sensitive(st->entry_operand, !is_not);
+
+    bool use_sel = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_sel));
+    hxd_offset_t off = use_sel ? st->doc->selection.start : 0;
+    hxd_size_t total_sz = pt_get_size(st->doc->pt);
+    hxd_size_t len = use_sel ? st->doc->selection.length : total_sz;
+    if (off + len > total_sz) len = (total_sz > off) ? total_sz - off : 0;
+
+    hxd_bitop_t op = HXD_BITOP_NOT;
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_and))) op = HXD_BITOP_AND;
+    else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_or))) op = HXD_BITOP_OR;
+    else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_xor))) op = HXD_BITOP_XOR;
+
+    uint8_t op_byte = 0;
+    const char *op_txt = gtk_entry_get_text(GTK_ENTRY(st->entry_operand));
+    if (op_txt && strlen(op_txt) > 0) {
+        op_byte = (uint8_t)parse_offset_string(op_txt, 0);
+    }
+
+    size_t preview_cnt = (len < 8) ? (size_t)len : 8;
+    uint8_t orig_sample[8], res_sample[8];
+    memset(orig_sample, 0, sizeof(orig_sample));
+    memset(res_sample, 0, sizeof(res_sample));
+
+    if (preview_cnt > 0) {
+        pt_read_bytes(st->doc->pt, off, orig_sample, preview_cnt, NULL);
+        for (size_t i = 0; i < preview_cnt; i++) {
+            switch (op) {
+                case HXD_BITOP_NOT: res_sample[i] = (uint8_t)(~orig_sample[i]); break;
+                case HXD_BITOP_AND: res_sample[i] = (uint8_t)(orig_sample[i] & op_byte); break;
+                case HXD_BITOP_OR:  res_sample[i] = (uint8_t)(orig_sample[i] | op_byte); break;
+                case HXD_BITOP_XOR: res_sample[i] = (uint8_t)(orig_sample[i] ^ op_byte); break;
+            }
+        }
+    }
+
+    char prev_str[512];
+    char b1_str[64] = "", b2_str[64] = "";
+    for (size_t i = 0; i < preview_cnt; i++) {
+        char tmp[8];
+        snprintf(tmp, sizeof(tmp), "%02X ", orig_sample[i]);
+        strcat(b1_str, tmp);
+        snprintf(tmp, sizeof(tmp), "%02X ", res_sample[i]);
+        strcat(b2_str, tmp);
+    }
+
+    snprintf(prev_str, sizeof(prev_str),
+             "Scope: <b>%llu bytes</b> at 0x%08llX\n"
+             "Before: <tt>%s</tt>\n"
+             "After:  <tt><b>%s</b></tt>",
+             (unsigned long long)len, (unsigned long long)off,
+             preview_cnt > 0 ? b1_str : "(Empty)",
+             preview_cnt > 0 ? b2_str : "(Empty)");
+    gtk_label_set_markup(GTK_LABEL(st->lbl_preview), prev_str);
+}
+
+static void on_bw_changed(GtkWidget *widget, gpointer user_data) {
+    (void)widget;
+    bitwise_dialog_update_preview((bitwise_dialog_state_t *)user_data);
+}
+
+void dialog_show_bitwise_op(App *app) {
+    document_t *doc = app_get_active_document(app);
+    if (!doc) return;
+
+    bitwise_dialog_state_t st;
+    memset(&st, 0, sizeof(st));
+    st.app = app;
+    st.doc = doc;
+
+    st.dlg = gtk_dialog_new_with_buttons(
+        "Bitwise Operations (AND / OR / NOT / XOR)",
+        GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "_Apply", GTK_RESPONSE_OK,
+        NULL
+    );
+    gtk_dialog_set_default_response(GTK_DIALOG(st.dlg), GTK_RESPONSE_OK);
+    gtk_window_set_default_size(GTK_WINDOW(st.dlg), 460, 360);
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(st.dlg));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 12);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_container_add(GTK_CONTAINER(content), vbox);
+
+    // Operation Choice
+    GtkWidget *f_op = gtk_frame_new("Operation");
+    GtkWidget *hb_op = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_container_set_border_width(GTK_CONTAINER(hb_op), 8);
+    gtk_container_add(GTK_CONTAINER(f_op), hb_op);
+
+    st.radio_not = gtk_radio_button_new_with_label(NULL, "NOT (~)");
+    st.radio_and = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_not), "AND (&)");
+    st.radio_or  = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_not), "OR (|)");
+    st.radio_xor = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_not), "XOR (^)");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_xor), TRUE);
+
+    g_signal_connect(st.radio_not, "toggled", G_CALLBACK(on_bw_changed), &st);
+    g_signal_connect(st.radio_and, "toggled", G_CALLBACK(on_bw_changed), &st);
+    g_signal_connect(st.radio_or,  "toggled", G_CALLBACK(on_bw_changed), &st);
+    g_signal_connect(st.radio_xor, "toggled", G_CALLBACK(on_bw_changed), &st);
+
+    gtk_box_pack_start(GTK_BOX(hb_op), st.radio_not, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(hb_op), st.radio_and, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(hb_op), st.radio_or,  TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(hb_op), st.radio_xor, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), f_op, FALSE, FALSE, 0);
+
+    // Operand Input
+    GtkWidget *hb_operand = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    st.lbl_operand_title = gtk_label_new("Mask / Key (Hex or Dec):");
+    gtk_box_pack_start(GTK_BOX(hb_operand), st.lbl_operand_title, FALSE, FALSE, 0);
+    st.entry_operand = gtk_entry_new();
+    gtk_entry_set_text(GTK_ENTRY(st.entry_operand), "0xFF");
+    g_signal_connect(st.entry_operand, "changed", G_CALLBACK(on_bw_changed), &st);
+    gtk_box_pack_start(GTK_BOX(hb_operand), st.entry_operand, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), hb_operand, FALSE, FALSE, 0);
+
+    // Operand Presets
+    GtkWidget *hb_presets = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    #define ADD_BW_PRESET(txt) do { \
+        GtkWidget *b = gtk_button_new_with_label(txt); \
+        g_signal_connect(b, "clicked", G_CALLBACK(on_bw_preset_clicked), &st); \
+        gtk_box_pack_start(GTK_BOX(hb_presets), b, TRUE, TRUE, 0); \
+    } while(0)
+    ADD_BW_PRESET("0xFF");
+    ADD_BW_PRESET("0x55");
+    ADD_BW_PRESET("0xAA");
+    ADD_BW_PRESET("0x0F");
+    ADD_BW_PRESET("0xF0");
+    ADD_BW_PRESET("0x20");
+    #undef ADD_BW_PRESET
+    gtk_box_pack_start(GTK_BOX(vbox), hb_presets, FALSE, FALSE, 0);
+
+    // Scope Frame
+    GtkWidget *f_scope = gtk_frame_new("Scope");
+    GtkWidget *hb_scope = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_container_set_border_width(GTK_CONTAINER(hb_scope), 8);
+    gtk_container_add(GTK_CONTAINER(f_scope), hb_scope);
+
+    bool has_sel = (doc->selection.length > 0);
+    char sel_txt[64], all_txt[64];
+    snprintf(sel_txt, sizeof(sel_txt), "Selected Range (%llu B)", (unsigned long long)doc->selection.length);
+    snprintf(all_txt, sizeof(all_txt), "Entire File (%llu B)", (unsigned long long)pt_get_size(doc->pt));
+
+    st.radio_sel = gtk_radio_button_new_with_label(NULL, sel_txt);
+    st.radio_all = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_sel), all_txt);
+    gtk_widget_set_sensitive(st.radio_sel, has_sel);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(has_sel ? st.radio_sel : st.radio_all), TRUE);
+
+    g_signal_connect(st.radio_sel, "toggled", G_CALLBACK(on_bw_changed), &st);
+    g_signal_connect(st.radio_all, "toggled", G_CALLBACK(on_bw_changed), &st);
+
+    gtk_box_pack_start(GTK_BOX(hb_scope), st.radio_sel, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(hb_scope), st.radio_all, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), f_scope, FALSE, FALSE, 0);
+
+    // Preview
+    GtkWidget *f_prev = gtk_frame_new("Live Preview");
+    st.lbl_preview = gtk_label_new(NULL);
+    gtk_label_set_xalign(GTK_LABEL(st.lbl_preview), 0.0);
+    gtk_container_set_border_width(GTK_CONTAINER(st.lbl_preview), 8);
+    gtk_container_add(GTK_CONTAINER(f_prev), st.lbl_preview);
+    gtk_box_pack_start(GTK_BOX(vbox), f_prev, FALSE, FALSE, 2);
+
+    bitwise_dialog_update_preview(&st);
+
+    gtk_widget_show_all(st.dlg);
+
+    if (gtk_dialog_run(GTK_DIALOG(st.dlg)) == GTK_RESPONSE_OK) {
+        bool use_sel = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_sel));
+        hxd_offset_t off = use_sel ? doc->selection.start : 0;
+        hxd_size_t total_sz = pt_get_size(doc->pt);
+        hxd_size_t len = use_sel ? doc->selection.length : total_sz;
+        if (off + len > total_sz) len = (total_sz > off) ? total_sz - off : 0;
+
+        hxd_bitop_t op = HXD_BITOP_NOT;
+        if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_and))) op = HXD_BITOP_AND;
+        else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_or))) op = HXD_BITOP_OR;
+        else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_xor))) op = HXD_BITOP_XOR;
+
+        uint8_t op_byte = (uint8_t)parse_offset_string(gtk_entry_get_text(GTK_ENTRY(st.entry_operand)), 0);
+        doc_bitwise_op(doc, off, len, op, &op_byte, 1);
+        app_update_ui(app);
+    }
+
+    gtk_widget_destroy(st.dlg);
+}
+
+/* =========================================================================
  * Two-File Diff / Comparison Tool
  * ========================================================================= */
 
@@ -935,6 +1344,40 @@ static void on_diff_run_clicked(GtkButton *btn, gpointer user_data) {
     }
 }
 
+static void on_diff_meld_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    diff_dialog_state_t *st = (diff_dialog_state_t *)user_data;
+    if (!st || !st->app) return;
+
+    if (!st->pt1 || !st->pt2) {
+        on_diff_run_clicked(NULL, st);
+    }
+    if (!st->pt1 || !st->pt2) return;
+
+    document_t *doc1 = st->doc1;
+    document_t *doc2 = st->doc2;
+
+    if (!doc1) {
+        const char *p1 = gtk_entry_get_text(GTK_ENTRY(st->entry_f1));
+        if (p1 && strlen(p1) > 0) {
+            app_open_document(st->app, p1);
+            doc1 = app_get_active_document(st->app);
+        }
+    }
+    if (!doc2) {
+        const char *p2 = gtk_entry_get_text(GTK_ENTRY(st->entry_f2));
+        if (p2 && strlen(p2) > 0) {
+            app_open_document(st->app, p2);
+            doc2 = app_get_active_document(st->app);
+        }
+    }
+
+    if (doc1 && doc2) {
+        app_open_diff_view(st->app, doc1, doc2);
+        gtk_dialog_response(GTK_DIALOG(st->dialog), GTK_RESPONSE_CLOSE);
+    }
+}
+
 void dialog_show_diff(App *app) {
     if (!app) return;
 
@@ -1064,10 +1507,13 @@ void dialog_show_diff(App *app) {
     g_signal_connect(btn_next, "clicked", G_CALLBACK(on_diff_next_clicked), st);
     GtkWidget *btn_jump = gtk_button_new_with_label("Jump to Diff in Editor");
     g_signal_connect(btn_jump, "clicked", G_CALLBACK(on_diff_jump_clicked), st);
+    GtkWidget *btn_meld = gtk_button_new_with_label("Open Side-by-Side in Editor ⬌");
+    g_signal_connect(btn_meld, "clicked", G_CALLBACK(on_diff_meld_clicked), st);
 
     gtk_box_pack_start(GTK_BOX(nav_bar), btn_prev, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(nav_bar), btn_next, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(nav_bar), btn_jump, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(nav_bar), btn_meld, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(lower_box), nav_bar, FALSE, FALSE, 2);
 
     // Previews Paned (Left = File 1, Right = File 2)

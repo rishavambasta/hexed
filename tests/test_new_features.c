@@ -5,6 +5,7 @@
 #include "../src/core/piece_table.h"
 #include "../src/core/document.h"
 #include "../src/core/checksums.h"
+#include "../src/core/search.h"
 
 static void test_sha256_and_crc32(void) {
     printf("Testing SHA-256 and CRC-32 calculation on selections...\n");
@@ -195,11 +196,153 @@ static void test_select_range_logic(void) {
     printf("  [PASS] Select range logic and boundary clamping verified!\n");
 }
 
+static void test_bitwise_operations(void) {
+    printf("Testing bitwise operations (NOT, AND, OR, XOR) and undo/redo...\n");
+
+    document_t *doc = doc_create_new();
+    uint8_t data[8] = { 0x00, 0xFF, 0x0F, 0xF0, 0xAA, 0x55, 0x12, 0x34 };
+    doc_paste(doc, data, 8);
+
+    // 1. NOT operation on entire file
+    doc_bitwise_op(doc, 0, 8, HXD_BITOP_NOT, NULL, 0);
+    uint8_t out[8];
+    pt_read_bytes(doc->pt, 0, out, 8, NULL);
+    assert(out[0] == 0xFF);
+    assert(out[1] == 0x00);
+    assert(out[2] == 0xF0);
+    assert(out[3] == 0x0F);
+    assert(out[4] == 0x55);
+    assert(out[5] == 0xAA);
+    assert(out[6] == (uint8_t)~0x12);
+    assert(out[7] == (uint8_t)~0x34);
+
+    // Undo NOT
+    assert(doc_can_undo(doc));
+    doc_undo(doc);
+    pt_read_bytes(doc->pt, 0, out, 8, NULL);
+    assert(memcmp(out, data, 8) == 0);
+
+    // Redo NOT
+    assert(doc_can_redo(doc));
+    doc_redo(doc);
+    pt_read_bytes(doc->pt, 0, out, 8, NULL);
+    assert(out[0] == 0xFF);
+
+    // Undo again to get back to original data
+    doc_undo(doc);
+
+    // 2. AND with 0x0F on range [4, 4) -> { 0xAA, 0x55, 0x12, 0x34 }
+    uint8_t op_and = 0x0F;
+    doc_bitwise_op(doc, 4, 4, HXD_BITOP_AND, &op_and, 1);
+    pt_read_bytes(doc->pt, 0, out, 8, NULL);
+    assert(out[0] == 0x00 && out[1] == 0xFF); // unchanged
+    assert(out[4] == (0xAA & 0x0F)); // 0x0A
+    assert(out[5] == (0x55 & 0x0F)); // 0x05
+    assert(out[6] == (0x12 & 0x0F)); // 0x02
+    assert(out[7] == (0x34 & 0x0F)); // 0x04
+
+    // 3. OR with 0x80 on range [0, 2) -> { 0x00, 0xFF }
+    uint8_t op_or = 0x80;
+    doc_bitwise_op(doc, 0, 2, HXD_BITOP_OR, &op_or, 1);
+    pt_read_bytes(doc->pt, 0, out, 8, NULL);
+    assert(out[0] == 0x80);
+    assert(out[1] == 0xFF);
+
+    // 4. XOR with 0xFF on range [0, 8)
+    uint8_t op_xor = 0xFF;
+    doc_bitwise_op(doc, 0, 8, HXD_BITOP_XOR, &op_xor, 1);
+    pt_read_bytes(doc->pt, 0, out, 8, NULL);
+    assert(out[0] == (0x80 ^ 0xFF));
+    assert(out[1] == (0xFF ^ 0xFF)); // 0x00
+
+    doc_free(doc);
+    printf("  [PASS] Bitwise operations and undo/redo history verified!\n");
+}
+
+static void test_pattern_wildcard_search(void) {
+    printf("Testing pattern and wildcard mask search...\n");
+
+    piece_table_t *pt = pt_create();
+    uint8_t haystack[] = {
+        0x90, 0x90, 0x48, 0x89, 0x5C, 0x24, 0x08, 0xCC,
+        0x48, 0x89, 0x74, 0x24, 0x10, 0xC3, 0x90
+    };
+    pt_insert_bytes(pt, 0, haystack, sizeof(haystack));
+
+    // Parse wildcard query "48 89 ?? 24 ??"
+    uint8_t *pat = NULL;
+    uint8_t *mask = NULL;
+    size_t pat_len = 0;
+    bool ok = search_parse_pattern_ex("48 89 ?? 24 ??", SEARCH_TYPE_WILDCARD, HXD_ENDIAN_LITTLE, &pat, &mask, &pat_len);
+    assert(ok && pat != NULL && mask != NULL && pat_len == 5);
+    assert(pat[0] == 0x48 && mask[0] == 0xFF);
+    assert(pat[1] == 0x89 && mask[1] == 0xFF);
+    assert(mask[2] == 0x00); // wildcard
+    assert(pat[3] == 0x24 && mask[3] == 0xFF);
+    assert(mask[4] == 0x00); // wildcard
+
+    search_params_t params = {
+        .type = SEARCH_TYPE_WILDCARD,
+        .direction = SEARCH_DIR_FORWARD,
+        .wildcard_mask = mask
+    };
+
+    hxd_offset_t found1 = search_find(pt, 0, pat, pat_len, &params);
+    assert(found1 == 2); // 0x48 at index 2
+
+    hxd_offset_t found2 = search_find(pt, 3, pat, pat_len, &params);
+    assert(found2 == 8); // 0x48 at index 8
+
+    search_results_t *all = search_find_all(pt, pat, pat_len, &params);
+    assert(all != NULL);
+    assert(all->count == 2);
+    assert(all->offsets[0] == 2);
+    assert(all->offsets[1] == 8);
+    search_results_free(all);
+
+    free(pat);
+    free(mask);
+    pt_free(pt);
+    printf("  [PASS] Pattern and wildcard mask search verified!\n");
+}
+
+static void test_regex_search(void) {
+    printf("Testing POSIX regex search on binary/text content...\n");
+
+    piece_table_t *pt = pt_create();
+    const char *data = "Header 123-4567 and some junk 888-9999 then End";
+    pt_insert_bytes(pt, 0, (const uint8_t *)data, strlen(data));
+
+    size_t matched_len = 0;
+    // Match phone format: [0-9]{3}-[0-9]{4}
+    hxd_offset_t off1 = search_find_regex(pt, 0, "[0-9]{3}-[0-9]{4}", false, true, &matched_len);
+    assert(off1 == 7);
+    assert(matched_len == 8);
+
+    hxd_offset_t off2 = search_find_regex(pt, off1 + matched_len, "[0-9]{3}-[0-9]{4}", false, true, &matched_len);
+    assert(off2 == 30);
+    assert(matched_len == 8);
+
+    // Find all
+    search_results_t *all = search_find_all_regex(pt, "[0-9]{3}-[0-9]{4}", true);
+    assert(all != NULL);
+    assert(all->count == 2);
+    assert(all->offsets[0] == 7);
+    assert(all->offsets[1] == 30);
+    search_results_free(all);
+
+    pt_free(pt);
+    printf("  [PASS] POSIX regex search verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
     test_diff_logic();
     test_select_range_logic();
+    test_bitwise_operations();
+    test_pattern_wildcard_search();
+    test_regex_search();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

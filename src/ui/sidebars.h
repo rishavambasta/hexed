@@ -63,6 +63,9 @@ typedef struct _Sidebars {
     GtkWidget *export_radio_srec;
     GtkWidget *export_combo_snippet_lang;
     GtkWidget *export_spin_bpr;
+    // Right collapse state
+    bool       right_collapsed;
+    int        right_saved_position;
 } Sidebars;
 
 Sidebars *sidebars_create(App *app);
@@ -71,5 +74,7 @@ void      sidebars_set_data_inspector_visible(Sidebars *sb, App *app, bool visib
 void      sidebars_set_base_converter_visible(Sidebars *sb, App *app, bool visible);
 void      sidebars_toggle_left_collapse(Sidebars *sb, App *app);
 bool      sidebars_is_left_collapsed(Sidebars *sb);
+void      sidebars_toggle_right_collapse(Sidebars *sb, App *app);
+bool      sidebars_is_right_collapsed(Sidebars *sb);
 
 #endif // HXD_SIDEBARS_H

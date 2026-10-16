@@ -613,6 +613,24 @@ static void on_menu_select_range(GtkMenuItem *item, gpointer user_data) {
     }
 }
 
+static void on_menu_goto(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    App *app = get_app_from_view(view);
+    if (app) {
+        app_show_goto_dialog(app);
+    }
+}
+
+static void on_menu_bitwise(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    App *app = get_app_from_view(view);
+    if (app) {
+        app_show_bitwise_op_dialog(app);
+    }
+}
+
 static void show_context_menu(HexView *view, GdkEventButton *event) {
     GtkWidget *menu = gtk_menu_new();
 
@@ -643,6 +661,16 @@ static void show_context_menu(HexView *view, GdkEventButton *event) {
     GtkWidget *m_sel_range = gtk_menu_item_new_with_label("Select Range...\tCtrl+E");
     g_signal_connect(m_sel_range, "activate", G_CALLBACK(on_menu_select_range), view);
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sel_range);
+
+    // Goto Address modal dialog
+    GtkWidget *m_goto = gtk_menu_item_new_with_label("Go to Address / Offset...\tCtrl+G");
+    g_signal_connect(m_goto, "activate", G_CALLBACK(on_menu_goto), view);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_goto);
+
+    // Bitwise Operations modal dialog
+    GtkWidget *m_bitwise = gtk_menu_item_new_with_label("Bitwise Operations... (NOT/AND/OR/XOR)");
+    g_signal_connect(m_bitwise, "activate", G_CALLBACK(on_menu_bitwise), view);
+    gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_bitwise);
 
     gtk_menu_shell_append(GTK_MENU_SHELL(menu), gtk_separator_menu_item_new());
 
@@ -822,6 +850,29 @@ static gboolean on_scroll(GtkWidget *widget, GdkEventScroll *event, gpointer use
     return FALSE;
 }
 
+static void update_cursor_navigation(HexView *view, hxd_offset_t prev_offset, bool is_shift) {
+    document_t *doc = view->doc;
+    if (!doc) return;
+
+    if (is_shift) {
+        if (doc->selection.length == 0) {
+            view->sel_anchor_offset = prev_offset;
+        }
+        hxd_offset_t anchor = view->sel_anchor_offset;
+        hxd_offset_t cur = doc->cursor_offset;
+        if (cur >= anchor) {
+            doc_set_selection(doc, anchor, cur - anchor + 1);
+        } else {
+            doc_set_selection(doc, cur, anchor - cur + 1);
+        }
+    } else {
+        doc_clear_selection(doc);
+        view->sel_anchor_offset = doc->cursor_offset;
+    }
+    hex_view_scroll_to_offset(view, doc->cursor_offset);
+    notify_change(view);
+}
+
 static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
     (void)widget;
     HexView *view = (HexView *)user_data;
@@ -843,6 +894,90 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
                 app_show_select_range_dialog(app);
                 return TRUE;
             }
+        } else if (event->keyval == GDK_KEY_g || event->keyval == GDK_KEY_G) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_show_goto_dialog(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                if (event->state & GDK_SHIFT_MASK) app_redo(app);
+                else app_undo(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_y || event->keyval == GDK_KEY_Y) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_redo(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_copy(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_v || event->keyval == GDK_KEY_V) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_paste(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_x || event->keyval == GDK_KEY_X) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_cut(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_a || event->keyval == GDK_KEY_A) {
+            doc_select_all(view->doc);
+            notify_change(view);
+            return TRUE;
+        } else if (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_show_find(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_show_replace(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                if (event->state & GDK_SHIFT_MASK) app_save_as_document(app);
+                else app_save_document(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_o || event->keyval == GDK_KEY_O) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_open_dialog(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_n || event->keyval == GDK_KEY_N) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_new_document(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_w || event->keyval == GDK_KEY_W) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_close_active_document(app);
+                return TRUE;
+            }
+        } else if (event->keyval == GDK_KEY_d || event->keyval == GDK_KEY_D) {
+            App *app = get_app_from_view(view);
+            if (app) {
+                app_show_diff_dialog(app);
+                return TRUE;
+            }
         }
     }
 
@@ -850,93 +985,92 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     int bpr = doc->bytes_per_row;
     if (bpr <= 0) bpr = 16;
     hxd_size_t sz = pt_get_size(doc->pt);
+    bool is_shift = (event->state & GDK_SHIFT_MASK) != 0;
 
     switch (event->keyval) {
-        case GDK_KEY_Left:
+        case GDK_KEY_Left: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             if (!doc->cursor_in_ascii && doc->cursor_nibble == 1) {
                 doc->cursor_nibble = 0;
             } else if (doc->cursor_offset > 0) {
                 doc->cursor_offset--;
                 if (!doc->cursor_in_ascii) doc->cursor_nibble = 1;
             }
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
+        }
 
-        case GDK_KEY_Right:
+        case GDK_KEY_Right: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             if (!doc->cursor_in_ascii && doc->cursor_nibble == 0) {
                 doc->cursor_nibble = 1;
             } else if (doc->cursor_offset < sz) {
                 doc->cursor_offset++;
                 doc->cursor_nibble = 0;
             }
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
+        }
 
-        case GDK_KEY_Up:
+        case GDK_KEY_Up: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             if (doc->cursor_offset >= (hxd_size_t)bpr) {
                 doc->cursor_offset -= bpr;
             }
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
+        }
 
-        case GDK_KEY_Down:
+        case GDK_KEY_Down: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             if (doc->cursor_offset + bpr <= sz) {
                 doc->cursor_offset += bpr;
             } else {
                 doc->cursor_offset = sz;
             }
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
+        }
 
         case GDK_KEY_Page_Up: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             double page_size = gtk_adjustment_get_page_size(view->v_adj);
             int step = (int)page_size * bpr;
             if (doc->cursor_offset > (hxd_size_t)step) doc->cursor_offset -= step;
             else doc->cursor_offset = 0;
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
         }
 
         case GDK_KEY_Page_Down: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             double page_size = gtk_adjustment_get_page_size(view->v_adj);
             int step = (int)page_size * bpr;
             if (doc->cursor_offset + step < sz) doc->cursor_offset += step;
             else doc->cursor_offset = sz;
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
         }
 
-        case GDK_KEY_Home:
+        case GDK_KEY_Home: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             if (event->state & GDK_CONTROL_MASK) doc->cursor_offset = 0;
             else doc->cursor_offset = (doc->cursor_offset / bpr) * bpr;
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
+        }
 
-        case GDK_KEY_End:
+        case GDK_KEY_End: {
+            hxd_offset_t prev_offset = doc->cursor_offset;
             if (event->state & GDK_CONTROL_MASK) {
                 doc->cursor_offset = sz;
             } else {
                 hxd_offset_t end_of_line = (doc->cursor_offset / bpr) * bpr + bpr - 1;
                 doc->cursor_offset = end_of_line < sz ? end_of_line : sz;
             }
-            doc_clear_selection(doc);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
+            update_cursor_navigation(view, prev_offset, is_shift);
             return TRUE;
+        }
 
         case GDK_KEY_Insert:
             doc->edit_mode = (doc->edit_mode == HXD_MODE_OVERWRITE) ? HXD_MODE_INSERT : HXD_MODE_OVERWRITE;
@@ -963,22 +1097,24 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
             return TRUE;
     }
 
-    // Text / Hex typing
-    guint32 unicode = gdk_keyval_to_unicode(event->keyval);
-    if (unicode >= 32 && unicode <= 126) {
-        char c = (char)unicode;
-        if (doc->cursor_in_ascii) {
-            doc_type_ascii_char(doc, c);
-            update_scroll_adjustment(view);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
-            return TRUE;
-        } else if (isxdigit((unsigned char)c)) {
-            doc_type_hex_digit(doc, c);
-            update_scroll_adjustment(view);
-            hex_view_scroll_to_offset(view, doc->cursor_offset);
-            notify_change(view);
-            return TRUE;
+    // Text / Hex typing (only when Ctrl is NOT held)
+    if (!(event->state & GDK_CONTROL_MASK)) {
+        guint32 unicode = gdk_keyval_to_unicode(event->keyval);
+        if (unicode >= 32 && unicode <= 126) {
+            char c = (char)unicode;
+            if (doc->cursor_in_ascii) {
+                doc_type_ascii_char(doc, c);
+                update_scroll_adjustment(view);
+                hex_view_scroll_to_offset(view, doc->cursor_offset);
+                notify_change(view);
+                return TRUE;
+            } else if (isxdigit((unsigned char)c)) {
+                doc_type_hex_digit(doc, c);
+                update_scroll_adjustment(view);
+                hex_view_scroll_to_offset(view, doc->cursor_offset);
+                notify_change(view);
+                return TRUE;
+            }
         }
     }
 

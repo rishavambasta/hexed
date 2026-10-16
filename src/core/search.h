@@ -18,7 +18,9 @@ typedef enum {
     SEARCH_TYPE_UINT64,
     SEARCH_TYPE_FLOAT32,
     SEARCH_TYPE_FLOAT64,
-    SEARCH_TYPE_BINARY
+    SEARCH_TYPE_BINARY,
+    SEARCH_TYPE_REGEX,
+    SEARCH_TYPE_WILDCARD
 } search_type_t;
 
 typedef enum {
@@ -33,6 +35,9 @@ typedef struct {
     bool               match_case;
     bool               whole_word;
     hxd_range_t        scope; // If length > 0, restrict search to this range
+    const uint8_t     *wildcard_mask; // Optional mask (length == pattern_len) for wildcards
+    const char        *regex_query;   // Raw regex string when type == SEARCH_TYPE_REGEX
+    size_t             matched_len;   // Output: length of matched region (for regex)
 } search_params_t;
 
 typedef struct {
@@ -43,12 +48,15 @@ typedef struct {
 
 /* Parse query string into raw byte pattern according to search parameters */
 bool             search_parse_pattern(const char *query, search_type_t type, hxd_endianness_t endian, uint8_t **out_pattern, size_t *out_len);
+bool             search_parse_pattern_ex(const char *query, search_type_t type, hxd_endianness_t endian, uint8_t **out_pattern, uint8_t **out_mask, size_t *out_len);
 
 /* Find next occurrence */
 hxd_offset_t     search_find(const piece_table_t *pt, hxd_offset_t start_offset, const uint8_t *pattern, size_t pattern_len, const search_params_t *params);
+hxd_offset_t     search_find_regex(const piece_table_t *pt, hxd_offset_t start_offset, const char *regex_str, bool backward, bool match_case, size_t *out_len);
 
 /* Find all occurrences */
 search_results_t *search_find_all(const piece_table_t *pt, const uint8_t *pattern, size_t pattern_len, const search_params_t *params);
+search_results_t *search_find_all_regex(const piece_table_t *pt, const char *regex_str, bool match_case);
 void             search_results_free(search_results_t *res);
 
 /* Replace next and replace all */

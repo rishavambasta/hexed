@@ -133,8 +133,9 @@ static void do_find(Sidebars *sb, App *app, search_direction_t dir) {
 
     search_type_t st = (search_type_t)gtk_combo_box_get_active(GTK_COMBO_BOX(sb->find_type_combo));
     uint8_t *pat = NULL;
+    uint8_t *mask = NULL;
     size_t pat_len = 0;
-    if (!search_parse_pattern(query, st, doc->endian, &pat, &pat_len)) return;
+    if (!search_parse_pattern_ex(query, st, doc->endian, &pat, &mask, &pat_len)) return;
 
     search_params_t sp;
     memset(&sp, 0, sizeof(sp));
@@ -142,6 +143,8 @@ static void do_find(Sidebars *sb, App *app, search_direction_t dir) {
     sp.direction = dir;
     sp.endian = doc->endian;
     sp.match_case = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(sb->find_chk_case));
+    sp.wildcard_mask = mask;
+    sp.regex_query = (st == SEARCH_TYPE_REGEX) ? query : NULL;
 
     if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(sb->find_chk_selection))) {
         sp.scope = doc->selection;
@@ -156,13 +159,15 @@ static void do_find(Sidebars *sb, App *app, search_direction_t dir) {
     }
 
     if (found != HXD_OFFSET_INVALID) {
+        size_t match_len = (st == SEARCH_TYPE_REGEX && sp.matched_len > 0) ? sp.matched_len : pat_len;
         doc_set_cursor(doc, found, false);
-        doc_set_selection(doc, found, pat_len);
+        doc_set_selection(doc, found, match_len);
         hex_view_scroll_to_offset(app->active_view, found);
         app_update_ui(app);
     }
 
     free(pat);
+    if (mask) free(mask);
 }
 
 static void on_find_next(GtkButton *btn, gpointer user_data) {
@@ -191,8 +196,9 @@ static void on_find_all(GtkButton *btn, gpointer user_data) {
 
     search_type_t st = (search_type_t)gtk_combo_box_get_active(GTK_COMBO_BOX(sb->find_type_combo));
     uint8_t *pat = NULL;
+    uint8_t *mask = NULL;
     size_t pat_len = 0;
-    if (!search_parse_pattern(query, st, doc->endian, &pat, &pat_len)) return;
+    if (!search_parse_pattern_ex(query, st, doc->endian, &pat, &mask, &pat_len)) return;
 
     search_params_t sp;
     memset(&sp, 0, sizeof(sp));
@@ -200,6 +206,8 @@ static void on_find_all(GtkButton *btn, gpointer user_data) {
     sp.direction = SEARCH_DIR_FORWARD;
     sp.endian = doc->endian;
     sp.match_case = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(sb->find_chk_case));
+    sp.wildcard_mask = mask;
+    sp.regex_query = (st == SEARCH_TYPE_REGEX) ? query : NULL;
 
     search_results_t *res = search_find_all(doc->pt, pat, pat_len, &sp);
 
@@ -214,6 +222,7 @@ static void on_find_all(GtkButton *btn, gpointer user_data) {
 
     search_results_free(res);
     free(pat);
+    if (mask) free(mask);
 }
 
 static void on_find_result_selected(GtkTreeSelection *sel, gpointer user_data) {
@@ -522,6 +531,13 @@ static void on_left_collapse_btn_clicked(GtkButton *btn, gpointer user_data) {
     sidebars_toggle_left_collapse(sb, app);
 }
 
+static void on_right_collapse_btn_clicked(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    sidebars_toggle_right_collapse(sb, app);
+}
+
 static GtkWidget *create_closable_tab_header(const char *title, GCallback on_close, gpointer user_data) {
     GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     GtkWidget *lbl = gtk_label_new(title);
@@ -547,8 +563,10 @@ Sidebars *sidebars_create(App *app) {
     Sidebars *sb = calloc(1, sizeof(Sidebars));
     sb->di_visible = true;
     sb->bc_visible = true;
-    sb->left_collapsed = false;
+    sb->left_collapsed = true;
     sb->left_saved_position = 260;
+    sb->right_collapsed = true;
+    sb->right_saved_position = 320;
 
     // -------------------------------------------------------------------------
     // LEFT NOTEBOOK (Data Inspector, Base Converter, Disk Editor)
@@ -666,6 +684,15 @@ Sidebars *sidebars_create(App *app) {
     gtk_notebook_set_tab_pos(GTK_NOTEBOOK(sb->right_notebook), GTK_POS_TOP);
     g_object_set_data(G_OBJECT(sb->right_notebook), "app", app);
 
+    GtkWidget *btn_rcol = gtk_button_new();
+    gtk_button_set_relief(GTK_BUTTON(btn_rcol), GTK_RELIEF_NONE);
+    GtkWidget *rcol_img = gtk_image_new_from_icon_name("pan-end-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_button_set_image(GTK_BUTTON(btn_rcol), rcol_img);
+    gtk_widget_set_tooltip_text(btn_rcol, "Collapse/Expand Right Sidebar");
+    g_signal_connect(btn_rcol, "clicked", G_CALLBACK(on_right_collapse_btn_clicked), sb);
+    gtk_notebook_set_action_widget(GTK_NOTEBOOK(sb->right_notebook), btn_rcol, GTK_PACK_END);
+    gtk_widget_show_all(btn_rcol);
+
     // 1. Find & Replace
     {
         GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
@@ -699,6 +726,8 @@ Sidebars *sidebars_create(App *app) {
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(sb->find_type_combo), "Float32");
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(sb->find_type_combo), "Float64");
         gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(sb->find_type_combo), "Binary");
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(sb->find_type_combo), "Regular Expression (RegEx)");
+        gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(sb->find_type_combo), "Wildcard Pattern (e.g. 48 89 ?? ?? )");
         gtk_combo_box_set_active(GTK_COMBO_BOX(sb->find_type_combo), 0);
         gtk_grid_attach(GTK_GRID(grid), sb->find_type_combo, 1, 2, 1, 1);
 
@@ -1029,4 +1058,25 @@ void sidebars_toggle_left_collapse(Sidebars *sb, App *app) {
 
 bool sidebars_is_left_collapsed(Sidebars *sb) {
     return sb ? sb->left_collapsed : false;
+}
+
+void sidebars_toggle_right_collapse(Sidebars *sb, App *app) {
+    if (!sb || !app || !app->paned_h2) return;
+
+    if (!sb->right_collapsed) {
+        // Collapse to right
+        int cur_pos = gtk_paned_get_position(GTK_PANED(app->paned_h2));
+        if (cur_pos > 50) sb->right_saved_position = cur_pos;
+        sb->right_collapsed = true;
+        gtk_paned_set_position(GTK_PANED(app->paned_h2), 99999);
+    } else {
+        // Restore / Expand
+        sb->right_collapsed = false;
+        int target_pos = (sb->right_saved_position > 50) ? sb->right_saved_position : 700;
+        gtk_paned_set_position(GTK_PANED(app->paned_h2), target_pos);
+    }
+}
+
+bool sidebars_is_right_collapsed(Sidebars *sb) {
+    return sb ? sb->right_collapsed : false;
 }

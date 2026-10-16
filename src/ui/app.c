@@ -47,6 +47,33 @@ static void on_tab_close_clicked(GtkButton *btn, gpointer user_data) {
     }
 }
 
+static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *page, gint x, gint y, gpointer user_data) {
+    (void)notebook;
+    (void)page;
+    App *app = (App *)user_data;
+
+    GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    gtk_window_set_title(GTK_WINDOW(win), "Hex Editor Neo");
+    gtk_window_set_default_size(GTK_WINDOW(win), 900, 620);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_container_add(GTK_CONTAINER(win), vbox);
+
+    GtkWidget *new_nb = gtk_notebook_new();
+    gtk_notebook_set_scrollable(GTK_NOTEBOOK(new_nb), TRUE);
+    gtk_notebook_set_group_name(GTK_NOTEBOOK(new_nb), "hxd-notebook-group");
+    g_signal_connect(new_nb, "create-window", G_CALLBACK(on_notebook_create_window), app);
+
+    gtk_box_pack_start(GTK_BOX(vbox), new_nb, TRUE, TRUE, 0);
+
+    if (x > 0 && y > 0) {
+        gtk_window_move(GTK_WINDOW(win), x, y);
+    }
+    gtk_widget_show_all(win);
+
+    return GTK_NOTEBOOK(new_nb);
+}
+
 static void add_document_tab(App *app, document_t *doc) {
     HexView *view = hex_view_create(doc);
     hex_view_set_column_interlacing(view, app->column_interlacing);
@@ -68,6 +95,8 @@ static void add_document_tab(App *app, document_t *doc) {
     gtk_widget_show_all(tab_box);
 
     int page = gtk_notebook_append_page(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view), tab_box);
+    gtk_notebook_set_tab_detachable(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view), TRUE);
+    gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(app->doc_notebook), hex_view_get_widget(view), TRUE);
     gtk_widget_show_all(hex_view_get_widget(view));
 
     app->hex_views = g_list_append(app->hex_views, view);
@@ -102,7 +131,26 @@ App *app_create(void) {
     // Document Notebook
     app->doc_notebook = gtk_notebook_new();
     gtk_notebook_set_scrollable(GTK_NOTEBOOK(app->doc_notebook), TRUE);
+    gtk_notebook_set_group_name(GTK_NOTEBOOK(app->doc_notebook), "hxd-notebook-group");
+    g_signal_connect(app->doc_notebook, "create-window", G_CALLBACK(on_notebook_create_window), app);
     g_signal_connect(app->doc_notebook, "switch-page", G_CALLBACK(on_tab_switch), app);
+
+    // Notebook Top Actions (New and Open icons directly on top of tab bar)
+    GtkWidget *tab_actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
+    GtkWidget *btn_nb_new = gtk_button_new_from_icon_name("tab-new-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_button_set_relief(GTK_BUTTON(btn_nb_new), GTK_RELIEF_NONE);
+    gtk_widget_set_tooltip_text(btn_nb_new, "New Document (Ctrl+N)");
+    g_signal_connect_swapped(btn_nb_new, "clicked", G_CALLBACK(app_new_document), app);
+    gtk_box_pack_start(GTK_BOX(tab_actions), btn_nb_new, FALSE, FALSE, 0);
+
+    GtkWidget *btn_nb_open = gtk_button_new_from_icon_name("document-open-symbolic", GTK_ICON_SIZE_MENU);
+    gtk_button_set_relief(GTK_BUTTON(btn_nb_open), GTK_RELIEF_NONE);
+    gtk_widget_set_tooltip_text(btn_nb_open, "Open File (Ctrl+O)");
+    g_signal_connect_swapped(btn_nb_open, "clicked", G_CALLBACK(app_open_dialog), app);
+    gtk_box_pack_start(GTK_BOX(tab_actions), btn_nb_open, FALSE, FALSE, 0);
+
+    gtk_widget_show_all(tab_actions);
+    gtk_notebook_set_action_widget(GTK_NOTEBOOK(app->doc_notebook), tab_actions, GTK_PACK_END);
 
     // Sidebars & Bottombar
     app->sidebars = sidebars_create(app);
@@ -115,11 +163,13 @@ App *app_create(void) {
 
     gtk_paned_pack1(GTK_PANED(app->paned_h2), app->doc_notebook, TRUE, FALSE);
     gtk_paned_pack2(GTK_PANED(app->paned_h2), app->sidebars->right_notebook, FALSE, TRUE);
-    gtk_paned_set_position(GTK_PANED(app->paned_h2), 700);
+    // Right sidebar minimized by default
+    gtk_paned_set_position(GTK_PANED(app->paned_h2), 99999);
 
     gtk_paned_pack1(GTK_PANED(app->paned_h1), app->sidebars->left_notebook, FALSE, TRUE);
     gtk_paned_pack2(GTK_PANED(app->paned_h1), app->paned_h2, TRUE, FALSE);
-    gtk_paned_set_position(GTK_PANED(app->paned_h1), 260);
+    // Left sidebar minimized by default
+    gtk_paned_set_position(GTK_PANED(app->paned_h1), 0);
 
     gtk_paned_pack1(GTK_PANED(app->paned_v), app->paned_h1, TRUE, FALSE);
     gtk_paned_pack2(GTK_PANED(app->paned_v), app->bottombar->notebook, FALSE, TRUE);
@@ -417,7 +467,265 @@ void app_show_gap_dialog(App *app) { dialog_show_gap(app); }
 void app_show_size_dialog(App *app) { dialog_show_size(app); }
 void app_show_insert_file_dialog(App *app) { dialog_show_insert_file(app); }
 void app_show_select_range_dialog(App *app) { dialog_show_select_range(app); }
+void app_show_goto_dialog(App *app) { dialog_show_goto(app); }
+void app_show_bitwise_op_dialog(App *app) { dialog_show_bitwise_op(app); }
 void app_show_diff_dialog(App *app) { dialog_show_diff(app); }
+
+typedef struct {
+    hxd_offset_t offset;
+    hxd_size_t   length;
+} app_diff_chunk_t;
+
+typedef struct {
+    App              *app;
+    document_t       *doc1;
+    document_t       *doc2;
+    HexView          *v1;
+    HexView          *v2;
+    GtkWidget        *paned;
+    GtkWidget        *tab_content;
+    GtkWidget        *lbl_info;
+    GtkWidget        *btn_orient;
+    app_diff_chunk_t *chunks;
+    size_t            chunk_count;
+    size_t            current_chunk;
+    bool              syncing_scroll;
+    bool              is_horizontal;
+} app_diff_view_state_t;
+
+static void on_editor_diff_v1_scrolled(GtkAdjustment *adj, gpointer user_data) {
+    app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
+    if (st->syncing_scroll) return;
+    st->syncing_scroll = true;
+    gtk_adjustment_set_value(st->v2->v_adj, gtk_adjustment_get_value(adj));
+    st->syncing_scroll = false;
+}
+
+static void on_editor_diff_v2_scrolled(GtkAdjustment *adj, gpointer user_data) {
+    app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
+    if (st->syncing_scroll) return;
+    st->syncing_scroll = true;
+    gtk_adjustment_set_value(st->v1->v_adj, gtk_adjustment_get_value(adj));
+    st->syncing_scroll = false;
+}
+
+static void editor_diff_update_ui(app_diff_view_state_t *st) {
+    if (st->chunk_count == 0) {
+        gtk_label_set_markup(GTK_LABEL(st->lbl_info), "<b>Files are 100% Identical!</b>");
+        return;
+    }
+
+    if (st->current_chunk >= st->chunk_count) st->current_chunk = 0;
+    app_diff_chunk_t c = st->chunks[st->current_chunk];
+
+    doc_set_cursor(st->doc1, c.offset, false);
+    doc_set_selection(st->doc1, c.offset, c.length);
+    doc_set_cursor(st->doc2, c.offset, false);
+    doc_set_selection(st->doc2, c.offset, c.length);
+
+    hex_view_scroll_to_offset(st->v1, c.offset);
+    hex_view_scroll_to_offset(st->v2, c.offset);
+    hex_view_refresh(st->v1);
+    hex_view_refresh(st->v2);
+
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+             "Diff <b>%zu of %zu</b> | Offset: <b>0x%08llX</b> | Length: <b>%llu byte%s</b>",
+             st->current_chunk + 1, st->chunk_count,
+             (unsigned long long)c.offset, (unsigned long long)c.length,
+             c.length == 1 ? "" : "s");
+    gtk_label_set_markup(GTK_LABEL(st->lbl_info), buf);
+}
+
+static void on_editor_diff_prev(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
+    if (st->chunk_count == 0) return;
+    if (st->current_chunk > 0) st->current_chunk--;
+    else st->current_chunk = st->chunk_count - 1;
+    editor_diff_update_ui(st);
+}
+
+static void on_editor_diff_next(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
+    if (st->chunk_count == 0) return;
+    if (st->current_chunk + 1 < st->chunk_count) st->current_chunk++;
+    else st->current_chunk = 0;
+    editor_diff_update_ui(st);
+}
+
+static void on_editor_diff_orient(GtkButton *btn, gpointer user_data) {
+    app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
+    st->is_horizontal = !st->is_horizontal;
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(st->paned),
+        st->is_horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
+    gtk_button_set_label(btn, st->is_horizontal ? "Split: Horizontal ⬌" : "Split: Vertical ⬍");
+}
+
+static void on_editor_diff_close(GtkButton *btn, gpointer user_data) {
+    (void)btn;
+    app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
+    int page_num = gtk_notebook_page_num(GTK_NOTEBOOK(st->app->doc_notebook), st->tab_content);
+    if (page_num >= 0) {
+        gtk_notebook_remove_page(GTK_NOTEBOOK(st->app->doc_notebook), page_num);
+    }
+    hex_view_free(st->v1);
+    hex_view_free(st->v2);
+    free(st->chunks);
+    free(st);
+}
+
+void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
+    if (!app || !doc1 || !doc2) return;
+
+    app_diff_view_state_t *st = calloc(1, sizeof(app_diff_view_state_t));
+    st->app = app;
+    st->doc1 = doc1;
+    st->doc2 = doc2;
+    st->is_horizontal = true;
+
+    // Scan difference chunks
+    hxd_size_t sz1 = pt_get_size(doc1->pt);
+    hxd_size_t sz2 = pt_get_size(doc2->pt);
+    hxd_size_t max_sz = (sz1 > sz2) ? sz1 : sz2;
+
+    size_t cap = 32;
+    st->chunks = malloc(cap * sizeof(app_diff_chunk_t));
+    st->chunk_count = 0;
+
+    bool in_diff = false;
+    hxd_offset_t d_start = 0;
+    hxd_size_t d_len = 0;
+
+    const size_t CHUNK = 4096;
+    uint8_t buf1[CHUNK], buf2[CHUNK];
+    hxd_offset_t cur = 0;
+
+    while (cur < max_sz) {
+        size_t n = (max_sz - cur < CHUNK) ? (size_t)(max_sz - cur) : CHUNK;
+        hxd_size_t r1 = pt_read_bytes(doc1->pt, cur, buf1, n, NULL);
+        hxd_size_t r2 = pt_read_bytes(doc2->pt, cur, buf2, n, NULL);
+
+        for (size_t i = 0; i < n; i++) {
+            bool has1 = (cur + i < sz1 && i < (size_t)r1);
+            bool has2 = (cur + i < sz2 && i < (size_t)r2);
+            bool diff = (!has1 || !has2 || buf1[i] != buf2[i]);
+
+            if (diff) {
+                if (!in_diff) {
+                    in_diff = true;
+                    d_start = cur + i;
+                    d_len = 1;
+                } else {
+                    d_len++;
+                }
+            } else {
+                if (in_diff) {
+                    if (st->chunk_count >= cap) {
+                        cap *= 2;
+                        st->chunks = realloc(st->chunks, cap * sizeof(app_diff_chunk_t));
+                    }
+                    st->chunks[st->chunk_count].offset = d_start;
+                    st->chunks[st->chunk_count].length = d_len;
+                    st->chunk_count++;
+                    in_diff = false;
+                }
+            }
+        }
+        cur += n;
+    }
+    if (in_diff) {
+        if (st->chunk_count >= cap) {
+            cap *= 2;
+            st->chunks = realloc(st->chunks, cap * sizeof(app_diff_chunk_t));
+        }
+        st->chunks[st->chunk_count].offset = d_start;
+        st->chunks[st->chunk_count].length = d_len;
+        st->chunk_count++;
+    }
+
+    // Build Tab Content
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+    st->tab_content = vbox;
+
+    // Diff Bar
+    GtkWidget *hb_bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_container_set_border_width(GTK_CONTAINER(hb_bar), 4);
+
+    GtkWidget *lbl_title = gtk_label_new(NULL);
+    char title_buf[256];
+    snprintf(title_buf, sizeof(title_buf), "<b>Meld-Style Diff:</b> %s ⟷ %s",
+             doc1->display_name ? doc1->display_name : "Doc 1",
+             doc2->display_name ? doc2->display_name : "Doc 2");
+    gtk_label_set_markup(GTK_LABEL(lbl_title), title_buf);
+    gtk_box_pack_start(GTK_BOX(hb_bar), lbl_title, FALSE, FALSE, 4);
+
+    GtkWidget *btn_prev = gtk_button_new_with_label("◀ Prev Diff (Shift+F7)");
+    g_signal_connect(btn_prev, "clicked", G_CALLBACK(on_editor_diff_prev), st);
+    gtk_box_pack_start(GTK_BOX(hb_bar), btn_prev, FALSE, FALSE, 0);
+
+    GtkWidget *btn_next = gtk_button_new_with_label("Next Diff ▶ (F7)");
+    g_signal_connect(btn_next, "clicked", G_CALLBACK(on_editor_diff_next), st);
+    gtk_box_pack_start(GTK_BOX(hb_bar), btn_next, FALSE, FALSE, 0);
+
+    st->lbl_info = gtk_label_new(NULL);
+    gtk_box_pack_start(GTK_BOX(hb_bar), st->lbl_info, FALSE, FALSE, 8);
+
+    st->btn_orient = gtk_button_new_with_label("Split: Horizontal ⬌");
+    g_signal_connect(st->btn_orient, "clicked", G_CALLBACK(on_editor_diff_orient), st);
+    gtk_box_pack_start(GTK_BOX(hb_bar), st->btn_orient, FALSE, FALSE, 4);
+
+    GtkWidget *btn_close = gtk_button_new_with_label("Close Diff (×)");
+    g_signal_connect(btn_close, "clicked", G_CALLBACK(on_editor_diff_close), st);
+    gtk_box_pack_end(GTK_BOX(hb_bar), btn_close, FALSE, FALSE, 0);
+
+    gtk_box_pack_start(GTK_BOX(vbox), hb_bar, FALSE, FALSE, 0);
+
+    // Paned with side-by-side HexViews
+    st->paned = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+    st->v1 = hex_view_create(doc1);
+    st->v2 = hex_view_create(doc2);
+
+    hex_view_set_column_interlacing(st->v1, app->column_interlacing);
+    hex_view_set_column_interlacing(st->v2, app->column_interlacing);
+    hex_view_set_hex_case(st->v1, app->hex_case);
+    hex_view_set_hex_case(st->v2, app->hex_case);
+    hex_view_set_bytes_per_row(st->v1, app->bytes_per_row);
+    hex_view_set_bytes_per_row(st->v2, app->bytes_per_row);
+
+    g_signal_connect(st->v1->v_adj, "value-changed", G_CALLBACK(on_editor_diff_v1_scrolled), st);
+    g_signal_connect(st->v2->v_adj, "value-changed", G_CALLBACK(on_editor_diff_v2_scrolled), st);
+
+    gtk_paned_pack1(GTK_PANED(st->paned), hex_view_get_widget(st->v1), TRUE, TRUE);
+    gtk_paned_pack2(GTK_PANED(st->paned), hex_view_get_widget(st->v2), TRUE, TRUE);
+    gtk_paned_set_position(GTK_PANED(st->paned), 500);
+
+    gtk_box_pack_start(GTK_BOX(vbox), st->paned, TRUE, TRUE, 0);
+
+    // Notebook Tab Header
+    GtkWidget *tab_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    char tab_lbl[128];
+    snprintf(tab_lbl, sizeof(tab_lbl), "Diff: %s ⟷ %s",
+             doc1->display_name ? doc1->display_name : "Doc 1",
+             doc2->display_name ? doc2->display_name : "Doc 2");
+    GtkWidget *tab_label = gtk_label_new(tab_lbl);
+    GtkWidget *tclose_btn = gtk_button_new_from_icon_name("window-close", GTK_ICON_SIZE_MENU);
+    gtk_button_set_relief(GTK_BUTTON(tclose_btn), GTK_RELIEF_NONE);
+    g_signal_connect(tclose_btn, "clicked", G_CALLBACK(on_editor_diff_close), st);
+    gtk_box_pack_start(GTK_BOX(tab_box), tab_label, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(tab_box), tclose_btn, FALSE, FALSE, 0);
+    gtk_widget_show_all(tab_box);
+
+    int page = gtk_notebook_append_page(GTK_NOTEBOOK(app->doc_notebook), vbox, tab_box);
+    gtk_notebook_set_tab_detachable(GTK_NOTEBOOK(app->doc_notebook), vbox, TRUE);
+    gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(app->doc_notebook), vbox, TRUE);
+    gtk_widget_show_all(vbox);
+    gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), page);
+
+    editor_diff_update_ui(st);
+}
+
 void app_show_settings_dialog(App *app) { dialog_show_settings(app); }
 void app_show_controls_dialog(App *app) { dialog_show_controls(app); }
 void app_show_about_dialog(App *app) { dialog_show_about(app); }

@@ -64,6 +64,15 @@ bool           pt_fill_bytes(piece_table_t *pt, hxd_offset_t offset, hxd_size_t 
 bool           pt_make_gap(piece_table_t *pt, hxd_offset_t offset, hxd_size_t len);
 bool           pt_set_size(piece_table_t *pt, hxd_size_t new_size, uint8_t pad_byte);
 
+typedef enum {
+    HXD_BITOP_NOT,
+    HXD_BITOP_AND,
+    HXD_BITOP_OR,
+    HXD_BITOP_XOR
+} hxd_bitop_t;
+
+bool           pt_bitwise_op(piece_table_t *pt, hxd_offset_t offset, hxd_size_t len, hxd_bitop_t op, const uint8_t *operand, size_t operand_len);
+
 /* Persistence */
 bool           pt_save_file(const piece_table_t *pt, const char *path);
 

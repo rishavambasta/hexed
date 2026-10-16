@@ -23,13 +23,41 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - Data Inspector and Base Converter tabs feature individual close buttons (`×`).
   - Collapse button on the tab strip to instantly minimize the left sidebar.
   - Reopen or toggle panels at any time from the Main Menu (`View -> Data Inspector / Base Converter`), toolbar buttons (`twin_inspector.svg`, `twin_baseconv2.svg`), or shortcut `Ctrl + B`.
-- **Dedicated Two-File Diff & Comparison Tool**:
+- **Dedicated Two-File Diff & Meld-Style Side-by-Side Comparison**:
   - Compare any two files: pick from active tabs or browse from disk.
   - Coalesces contiguous differing bytes into structured difference blocks with offsets, lengths, and hex/ASCII summaries.
   - Synchronized side-by-side hex preview highlighting differing bytes.
   - Next Difference (`Next Diff ▶`) and Previous Difference (`◀ Previous Diff`) navigation.
   - `Jump to Diff in Editor` button to center and select the mismatch in the main editor.
+  - **Meld-Style Side-by-Side Editor Diff Tab**: Click `Open Side-by-Side in Editor ⬌` to embed synchronized, side-by-side hex comparison directly into a notebook tab with split view toggle (Horizontal / Vertical), difference chunk counter, and `F7` / `Shift+F7` shortcut navigation.
   - Accessible via Toolbar (`twin_compare.svg`), Main Menu (`Ctrl + D`), or the BottomBar panel.
+- **Top Icons for Open & New**:
+  - Prominent dedicated `tab-new` and `document-open` action icons docked directly on top of the notebook tab bar and toolbar.
+- **`Ctrl + G` Jump to Address / Offset**:
+  - Interactive Goto dialog supporting both Hexadecimal (`0x...` or trailing `h`/`H`) and Decimal offsets.
+  - Origins: Absolute (`0x0`), Relative to Cursor (`+/- Offset`), and Relative to End of File (`EOF - Offset`).
+  - Real-time target address preview with boundary clamping and `<Enter>` activation.
+- **Bitwise Operations (NOT, AND, OR, XOR)**:
+  - Perform bitwise transformations on either the active selection or the entire file.
+  - Operations supported: Bitwise Invert (`NOT`), `AND`, `OR`, `XOR`.
+  - Presets: Invert (`0xFF`), Alternating (`0x55`, `0xAA`), Low/High Nibble (`0x0F`, `0xF0`), Clear/Set High Bit (`0x7F`, `0x80`), Toggle ASCII Case (`0x20`).
+  - Live before/after preview and full multi-level Undo/Redo integration.
+- **Pattern & Regular Expression (RegEx) Search**:
+  - **POSIX Regular Expressions** (`<regex.h>`): Search for patterns like `[0-9]{3}-[0-9]{4}`, `GET|POST`, `\x7FELF`, etc.
+  - **Wildcard Byte Patterns**: Search hex patterns with wildcards, e.g. `48 89 ?? ?? 55` or `AA ?? CC`.
+  - Search forward, backward, match case, or find all matches in the document.
+- **Detachable Dragged-Off Tabs**:
+  - Drag any document tab off the notebook; releasing the drag creates and docks it into a new top-level window at the release position.
+- **Minimized Sidebars by Default**:
+  - Both Left (Data Inspector, Base Converter) and Right (Find, Selection, History, Export) sidebars start collapsed to maximize hex view workspace.
+  - Quick expand/collapse toggle buttons and `Ctrl + B` shortcut.
+- **Shift + Arrows Selection**:
+  - `Shift + Left/Right/Up/Down/PageUp/PageDown/Home/End` appends to and extends selection range naturally.
+- **Zoom Shortcuts**:
+  - `Ctrl + '+'` / `Ctrl + Shift + '+'` / `Ctrl + '='` to zoom in.
+  - `Ctrl + '-'` / `Ctrl + Shift + '-'` / `Ctrl + '_'` to zoom out.
+  - `Ctrl + '0'` to reset zoom to 100%.
+  - `Ctrl + Mouse Wheel Scroll` for smooth font scaling.
 - **Context Menu Checksum Calculations**:
   - Right-click anywhere in the editor to open the contextual action menu.
   - Compute SHA-256 or CRC-32 on the selected byte range (or the entire file if no selection).
@@ -95,7 +123,7 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - Cryptographic: MD5 (RFC 1321), SHA-1 (FIPS 180-1), SHA-256 (FIPS 180-2).
   - Scope: Whole Document or Selection Only.
 - **Find & Replace**:
-  - Search across Hex, ASCII String, Unicode UTF-16, Integer (Int8..64), Float (Float32/64), Binary.
+  - Search across Hex, ASCII String, Unicode UTF-16, Integer (Int8..64), Float (Float32/64), Binary, Pattern / Wildcard, and RegEx.
   - Match case, whole word, forward/backward direction, search in selection.
   - Find Next (`F3`), Find Previous (`Shift+F3`), Replace, Replace All, Find All occurrences list.
 - **Statistics**:
@@ -175,15 +203,26 @@ Measured on a 1.0 Gigabyte binary file:
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
 | `Ctrl+C` | Copy Selection as Hex |
 | `Ctrl+V` | Paste Data at Cursor |
+| `Ctrl+G` | Go to Address / Offset (Hex / Dec) |
+| `Ctrl+E` | Select Range / Block |
+| `Ctrl+D` | Compare / Diff Files |
+| `Ctrl+B` | Toggle Left Sidebar |
 | `Ctrl+F` | Open Find Panel |
 | `Ctrl+H` | Open Replace Panel |
 | `F3` | Find Next |
 | `Shift+F3` | Find Previous |
+| `F7` | Next Difference Chunk (in Meld Diff view) |
+| `Shift+F7` | Previous Difference Chunk (in Meld Diff view) |
 | `Ctrl+A` | Select All |
+| `Ctrl++` / `Ctrl+Shift++` | Zoom In |
+| `Ctrl+-` / `Ctrl+Shift+-` | Zoom Out |
+| `Ctrl+0` | Reset Zoom to 100% |
 | `Insert` | Toggle Overwrite (`OVR`) / Insert (`INS`) mode |
 | `Delete` / `Backspace` | Delete Byte or Selection |
 | `Tab` | Switch Focus between Hex and ASCII Columns |
 | `Arrow Keys` | Move Cursor (Nibble or Byte) |
-| `Shift + Arrows` | Expand Selection Range |
+| `Shift + Arrows` | Expand / Append Selection Range |
 | `Home` / `End` | Jump to Start / End of Line |
+| `Shift + Home` / `Shift + End` | Extend Selection to Start / End of Line |
 | `Ctrl+Home` / `Ctrl+End` | Jump to Start / End of Document |
+| `Ctrl+Shift+Home` / `Ctrl+Shift+End` | Extend Selection to Start / End of Document |

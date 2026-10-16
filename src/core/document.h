@@ -58,6 +58,7 @@ bool        doc_make_gap(document_t *doc, hxd_offset_t off, hxd_size_t len);
 bool        doc_set_size(document_t *doc, hxd_size_t new_size, uint8_t pad_byte);
 bool        doc_paste(document_t *doc, const uint8_t *data, hxd_size_t len);
 bool        doc_insert_file(document_t *doc, const char *path);
+bool        doc_bitwise_op(document_t *doc, hxd_offset_t offset, hxd_size_t len, hxd_bitop_t op, const uint8_t *operand, size_t operand_len);
 
 /* Undo / Redo */
 bool        doc_can_undo(const document_t *doc);

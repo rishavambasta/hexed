@@ -435,3 +435,18 @@ void doc_remove_bookmark(document_t *doc, size_t index) {
     }
     doc->bookmark_count--;
 }
+
+bool doc_bitwise_op(document_t *doc, hxd_offset_t offset, hxd_size_t len, hxd_bitop_t op, const uint8_t *operand, size_t operand_len) {
+    if (!doc || !doc->pt || len == 0) return false;
+    bool ok = pt_bitwise_op(doc->pt, offset, len, op, operand, operand_len);
+    if (ok) {
+        doc->is_modified = true;
+        const char *op_name = "Bitwise Op";
+        if (op == HXD_BITOP_NOT) op_name = "Bitwise NOT";
+        else if (op == HXD_BITOP_AND) op_name = "Bitwise AND";
+        else if (op == HXD_BITOP_OR) op_name = "Bitwise OR";
+        else if (op == HXD_BITOP_XOR) op_name = "Bitwise XOR";
+        history_record(doc->history, HXD_ACTION_REPLACE, op_name, offset, len, doc->pt);
+    }
+    return ok;
+}

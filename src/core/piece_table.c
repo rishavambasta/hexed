@@ -602,3 +602,54 @@ void pt_iterate_spans(const piece_table_t *pt, pt_span_callback cb, void *userda
         curr = curr->next;
     }
 }
+
+bool pt_bitwise_op(piece_table_t *pt, hxd_offset_t offset, hxd_size_t len, hxd_bitop_t op, const uint8_t *operand, size_t operand_len) {
+    if (!pt || len == 0 || offset >= pt->total_size) return false;
+    if (offset + len > pt->total_size) len = pt->total_size - offset;
+
+    const size_t CHUNK = 65536;
+    uint8_t *buf = malloc(CHUNK);
+    if (!buf) return false;
+
+    hxd_offset_t cur = offset;
+    hxd_size_t remaining = len;
+    size_t op_index = 0;
+
+    while (remaining > 0) {
+        size_t to_process = (remaining < CHUNK) ? (size_t)remaining : CHUNK;
+        pt_read_bytes(pt, cur, buf, to_process, NULL);
+
+        for (size_t i = 0; i < to_process; i++) {
+            switch (op) {
+                case HXD_BITOP_NOT:
+                    buf[i] = (uint8_t)(~buf[i]);
+                    break;
+                case HXD_BITOP_AND:
+                    if (operand && operand_len > 0) {
+                        buf[i] = (uint8_t)(buf[i] & operand[(op_index + i) % operand_len]);
+                    }
+                    break;
+                case HXD_BITOP_OR:
+                    if (operand && operand_len > 0) {
+                        buf[i] = (uint8_t)(buf[i] | operand[(op_index + i) % operand_len]);
+                    }
+                    break;
+                case HXD_BITOP_XOR:
+                    if (operand && operand_len > 0) {
+                        buf[i] = (uint8_t)(buf[i] ^ operand[(op_index + i) % operand_len]);
+                    }
+                    break;
+            }
+        }
+
+        pt_overwrite_bytes(pt, cur, buf, to_process);
+        cur += to_process;
+        remaining -= to_process;
+        if (operand_len > 0) {
+            op_index = (op_index + to_process) % operand_len;
+        }
+    }
+
+    free(buf);
+    return true;
+}
