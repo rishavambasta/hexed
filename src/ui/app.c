@@ -10,6 +10,7 @@
 #include <string.h>
 
 static gboolean on_window_delete_event(GtkWidget *widget, GdkEvent *event, gpointer user_data);
+static gboolean on_app_window_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
 
 static void on_tab_switch(GtkNotebook *nb, GtkWidget *page, guint page_num, gpointer user_data) {
     (void)nb;
@@ -19,6 +20,9 @@ static void on_tab_switch(GtkNotebook *nb, GtkWidget *page, guint page_num, gpoi
     if (elem) {
         app->active_view = (HexView *)elem->data;
         app_update_ui(app);
+        if (app->active_view && app->active_view->drawing_area) {
+            gtk_widget_grab_focus(app->active_view->drawing_area);
+        }
     }
 }
 
@@ -43,6 +47,7 @@ static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(win), "Hex Editor Neo");
     gtk_window_set_default_size(GTK_WINDOW(win), 900, 620);
+    g_signal_connect(win, "key-press-event", G_CALLBACK(on_app_window_key_press), app);
 
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(win), vbox);
@@ -93,6 +98,9 @@ static void add_document_tab(App *app, document_t *doc) {
     gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), page);
     app->active_view = view;
     app_update_ui(app);
+    if (view->drawing_area) {
+        gtk_widget_grab_focus(view->drawing_area);
+    }
 }
 
 App *app_create(void) {
@@ -111,6 +119,7 @@ App *app_create(void) {
     gtk_window_set_default_size(GTK_WINDOW(app->window), 1260, 820);
     g_signal_connect(app->window, "delete-event", G_CALLBACK(on_window_delete_event), app);
     g_signal_connect(app->window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
+    g_signal_connect(app->window, "key-press-event", G_CALLBACK(on_app_window_key_press), app);
 
     app->main_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(app->window), app->main_vbox);
@@ -455,6 +464,9 @@ bool app_close_document_view(App *app, HexView *view, bool is_quitting) {
     if (g_list_length(app->hex_views) > 0) {
         int cur_page = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
         app->active_view = (HexView *)g_list_nth_data(app->hex_views, cur_page >= 0 ? cur_page : 0);
+        if (app->active_view && app->active_view->drawing_area) {
+            gtk_widget_grab_focus(app->active_view->drawing_area);
+        }
     } else {
         app->active_view = NULL;
         if (!is_quitting) {
@@ -774,6 +786,7 @@ void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
     // Build Tab Content
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     st->tab_content = vbox;
+    g_object_set_data(G_OBJECT(vbox), "diff_state", st);
 
     // Diff Bar
     GtkWidget *hb_bar = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
@@ -852,6 +865,175 @@ void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
     editor_diff_update_ui(st);
 }
 
+static gboolean on_app_window_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
+    (void)widget;
+    App *app = (App *)user_data;
+    if (!app) return FALSE;
+
+    guint mod_mask = gtk_accelerator_get_default_mod_mask();
+    guint state = event->state & mod_mask;
+    guint keyval = gdk_keyval_to_lower(event->keyval);
+
+    GtkWidget *focused = gtk_window_get_focus(GTK_WINDOW(app->window));
+    gboolean in_text_entry = (focused && (GTK_IS_ENTRY(focused) || GTK_IS_TEXT_VIEW(focused)));
+
+    // F7 / Shift+F7 for diff navigation if diff tab is open
+    if (keyval == GDK_KEY_F7) {
+        int cur_page = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
+        if (cur_page >= 0) {
+            GtkWidget *page_widget = gtk_notebook_get_nth_page(GTK_NOTEBOOK(app->doc_notebook), cur_page);
+            if (page_widget) {
+                app_diff_view_state_t *st = (app_diff_view_state_t *)g_object_get_data(G_OBJECT(page_widget), "diff_state");
+                if (st) {
+                    if (state & GDK_SHIFT_MASK) {
+                        on_editor_diff_prev(NULL, st);
+                    } else {
+                        on_editor_diff_next(NULL, st);
+                    }
+                    return TRUE;
+                }
+            }
+        }
+    }
+
+    // Zoom shortcuts: Ctrl + '+' / '=' / 'KP_Add' (zoom in), Ctrl + '-' / '_' / 'KP_Subtract' (zoom out), Ctrl + '0' (zoom reset)
+    // Note: On most keyboards, '+' is typed as Ctrl+Shift+'=', so we handle zoom whenever Ctrl is pressed regardless of Shift.
+    if (state & GDK_CONTROL_MASK) {
+        if (keyval == GDK_KEY_plus || keyval == GDK_KEY_equal || keyval == GDK_KEY_KP_Add) {
+            if (app->active_view) {
+                hex_view_zoom_in(app->active_view);
+                return TRUE;
+            }
+        } else if (keyval == GDK_KEY_minus || keyval == GDK_KEY_underscore || keyval == GDK_KEY_KP_Subtract) {
+            if (app->active_view) {
+                hex_view_zoom_out(app->active_view);
+                return TRUE;
+            }
+        } else if (keyval == GDK_KEY_0 || keyval == GDK_KEY_KP_0) {
+            if (app->active_view) {
+                hex_view_zoom_reset(app->active_view);
+                return TRUE;
+            }
+        }
+    }
+
+    // Ctrl + Shift shortcuts
+    if ((state & (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) == (GDK_CONTROL_MASK | GDK_SHIFT_MASK)) {
+        if (keyval == GDK_KEY_s) {
+            app_save_as_document(app);
+            return TRUE;
+        } else if (keyval == GDK_KEY_z) {
+            if (!in_text_entry) {
+                app_redo(app);
+                return TRUE;
+            }
+        }
+    }
+
+    // Standard Ctrl shortcuts
+    if (state == GDK_CONTROL_MASK) {
+        switch (keyval) {
+            case GDK_KEY_w:
+                app_close_active_document(app);
+                return TRUE;
+            case GDK_KEY_o:
+                app_open_dialog(app);
+                return TRUE;
+            case GDK_KEY_n:
+                app_new_document(app);
+                return TRUE;
+            case GDK_KEY_s:
+                app_save_document(app);
+                return TRUE;
+            case GDK_KEY_q:
+                app_quit(app);
+                return TRUE;
+            case GDK_KEY_f:
+                app_show_find(app);
+                return TRUE;
+            case GDK_KEY_h:
+                app_show_replace(app);
+                return TRUE;
+            case GDK_KEY_g:
+                app_show_goto_dialog(app);
+                return TRUE;
+            case GDK_KEY_e:
+                app_show_select_range_dialog(app);
+                return TRUE;
+            case GDK_KEY_d:
+                app_show_diff_dialog(app);
+                return TRUE;
+            case GDK_KEY_b:
+                if (app->sidebars) {
+                    sidebars_toggle_left_collapse(app->sidebars, app);
+                }
+                return TRUE;
+            case GDK_KEY_z:
+                if (!in_text_entry) {
+                    app_undo(app);
+                    return TRUE;
+                }
+                break;
+            case GDK_KEY_y:
+                if (!in_text_entry) {
+                    app_redo(app);
+                    return TRUE;
+                }
+                break;
+            case GDK_KEY_a:
+                if (!in_text_entry) {
+                    document_t *doc = app_get_active_document(app);
+                    if (doc) {
+                        doc_select_all(doc);
+                        app_update_ui(app);
+                    }
+                    return TRUE;
+                }
+                break;
+            case GDK_KEY_c:
+                if (!in_text_entry) {
+                    app_copy(app);
+                    return TRUE;
+                }
+                break;
+            case GDK_KEY_x:
+                if (!in_text_entry) {
+                    app_cut(app);
+                    return TRUE;
+                }
+                break;
+            case GDK_KEY_v:
+                if (!in_text_entry) {
+                    app_paste(app);
+                    return TRUE;
+                }
+                break;
+            case GDK_KEY_Page_Down: {
+                int n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(app->doc_notebook));
+                if (n_pages > 1) {
+                    int cur = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
+                    gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), (cur + 1) % n_pages);
+                    return TRUE;
+                }
+                break;
+            }
+            case GDK_KEY_Page_Up: {
+                int n_pages = gtk_notebook_get_n_pages(GTK_NOTEBOOK(app->doc_notebook));
+                if (n_pages > 1) {
+                    int cur = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
+                    gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), (cur - 1 + n_pages) % n_pages);
+                    return TRUE;
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+
+    return FALSE;
+}
+
 void app_show_settings_dialog(App *app) { dialog_show_settings(app); }
 void app_show_controls_dialog(App *app) { dialog_show_controls(app); }
 void app_show_about_dialog(App *app) { dialog_show_about(app); }
@@ -864,5 +1046,8 @@ void app_run(App *app, int argc, char **argv) {
     }
 
     gtk_widget_show_all(app->window);
+    if (app->active_view && app->active_view->drawing_area) {
+        gtk_widget_grab_focus(app->active_view->drawing_area);
+    }
     gtk_main();
 }

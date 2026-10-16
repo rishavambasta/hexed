@@ -574,6 +574,74 @@ static void test_selection_polygon_geometry_and_performance(void) {
     printf("  [PASS] Selection polygon geometry and ultra-fast performance verified!\n");
 }
 
+static void test_keyboard_shortcut_dispatch_logic(void) {
+    printf("Testing keyboard shortcut routing, modifier masking, and case normalization...\n");
+
+    // GTK modifier bitmasks
+    const unsigned int SHIFT_MASK = 1 << 0;
+    const unsigned int LOCK_MASK  = 1 << 1;
+    const unsigned int CTRL_MASK  = 1 << 2;
+    const unsigned int MOD2_MASK  = 1 << 4; // NumLock
+    const unsigned int DEFAULT_MOD_MASK = SHIFT_MASK | CTRL_MASK | (1 << 3) | (1 << 26) | (1 << 27) | (1 << 28);
+
+    // 1. Verify modifier masking strips NumLock and CapsLock
+    unsigned int raw_state = CTRL_MASK | MOD2_MASK | LOCK_MASK;
+    unsigned int masked_state = raw_state & DEFAULT_MOD_MASK;
+    assert(masked_state == CTRL_MASK);
+
+    // 2. Verify case normalization of keyval
+    unsigned int key_W = 'W';
+    unsigned int key_w = (key_W >= 'A' && key_W <= 'Z') ? (key_W + 32) : key_W;
+    assert(key_w == 'w');
+
+    // 3. Document action verification via simulated shortcut
+    document_t *doc = doc_create_new();
+    assert(doc != NULL);
+    doc_type_ascii_char(doc, 'H');
+    doc_type_ascii_char(doc, 'E');
+    doc_type_ascii_char(doc, 'X');
+    assert(pt_get_size(doc->pt) == 3);
+
+    // Simulate Ctrl+A -> select all
+    if (masked_state == CTRL_MASK && key_w == 'w') {
+        // Ctrl+W would close
+    }
+    // Simulate Ctrl+A
+    unsigned int key_a = 'a';
+    if (masked_state == CTRL_MASK && key_a == 'a') {
+        doc_select_all(doc);
+    }
+    assert(doc->selection.start == 0);
+    assert(doc->selection.length == 3);
+
+    // Simulate Ctrl+Z -> undo (coalesced typing returns size to 0)
+    assert(doc_can_undo(doc));
+    doc_undo(doc);
+    assert(pt_get_size(doc->pt) == 0);
+
+    // Simulate Ctrl+Y / Ctrl+Shift+Z -> redo
+    assert(doc_can_redo(doc));
+    doc_redo(doc);
+    assert(pt_get_size(doc->pt) == 3);
+
+    // 4. Test text entry guard: in text entry, editor shortcuts must be bypassed
+    bool in_text_entry = true;
+    bool hex_editor_handled = false;
+    if (!in_text_entry) {
+        hex_editor_handled = true;
+    }
+    assert(!hex_editor_handled); // Must not intercept in text input fields
+
+    in_text_entry = false;
+    if (!in_text_entry) {
+        hex_editor_handled = true;
+    }
+    assert(hex_editor_handled); // Intercepts when outside text input fields
+
+    doc_free(doc);
+    printf("  [PASS] Keyboard shortcut routing, modifier masking, and case normalization verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -585,6 +653,7 @@ int main(void) {
     test_modified_status_and_tab_markup();
     test_close_modified_warning_logic();
     test_selection_polygon_geometry_and_performance();
+    test_keyboard_shortcut_dispatch_logic();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

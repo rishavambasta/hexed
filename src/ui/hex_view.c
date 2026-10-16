@@ -1058,107 +1058,111 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     HexView *view = (HexView *)user_data;
     if (!view || !view->doc) return FALSE;
 
-    if (event->state & GDK_CONTROL_MASK) {
-        if (event->keyval == GDK_KEY_plus || event->keyval == GDK_KEY_equal || event->keyval == GDK_KEY_KP_Add) {
+    guint mod_mask = gtk_accelerator_get_default_mod_mask();
+    guint state = event->state & mod_mask;
+    guint keyval = gdk_keyval_to_lower(event->keyval);
+
+    if (state & GDK_CONTROL_MASK) {
+        if (keyval == GDK_KEY_plus || keyval == GDK_KEY_equal || keyval == GDK_KEY_KP_Add) {
             hex_view_zoom_in(view);
             return TRUE;
-        } else if (event->keyval == GDK_KEY_minus || event->keyval == GDK_KEY_underscore || event->keyval == GDK_KEY_KP_Subtract) {
+        } else if (keyval == GDK_KEY_minus || keyval == GDK_KEY_underscore || keyval == GDK_KEY_KP_Subtract) {
             hex_view_zoom_out(view);
             return TRUE;
-        } else if (event->keyval == GDK_KEY_0 || event->keyval == GDK_KEY_KP_0) {
+        } else if (keyval == GDK_KEY_0 || keyval == GDK_KEY_KP_0) {
             hex_view_zoom_reset(view);
             return TRUE;
-        } else if (event->keyval == GDK_KEY_e || event->keyval == GDK_KEY_E) {
+        } else if (keyval == GDK_KEY_e) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_show_select_range_dialog(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_g || event->keyval == GDK_KEY_G) {
+        } else if (keyval == GDK_KEY_g) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_show_goto_dialog(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_z || event->keyval == GDK_KEY_Z) {
+        } else if (keyval == GDK_KEY_z) {
             App *app = get_app_from_view(view);
             if (app) {
-                if (event->state & GDK_SHIFT_MASK) app_redo(app);
+                if (state & GDK_SHIFT_MASK) app_redo(app);
                 else app_undo(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_y || event->keyval == GDK_KEY_Y) {
+        } else if (keyval == GDK_KEY_y) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_redo(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_c || event->keyval == GDK_KEY_C) {
+        } else if (keyval == GDK_KEY_c) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_copy(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_v || event->keyval == GDK_KEY_V) {
+        } else if (keyval == GDK_KEY_v) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_paste(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_x || event->keyval == GDK_KEY_X) {
+        } else if (keyval == GDK_KEY_x) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_cut(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_a || event->keyval == GDK_KEY_A) {
+        } else if (keyval == GDK_KEY_a) {
             doc_select_all(view->doc);
             notify_change(view);
             return TRUE;
-        } else if (event->keyval == GDK_KEY_f || event->keyval == GDK_KEY_F) {
+        } else if (keyval == GDK_KEY_f) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_show_find(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_h || event->keyval == GDK_KEY_H) {
+        } else if (keyval == GDK_KEY_h) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_show_replace(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_s || event->keyval == GDK_KEY_S) {
+        } else if (keyval == GDK_KEY_s) {
             App *app = get_app_from_view(view);
             if (app) {
-                if (event->state & GDK_SHIFT_MASK) app_save_as_document(app);
+                if (state & GDK_SHIFT_MASK) app_save_as_document(app);
                 else app_save_document(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_o || event->keyval == GDK_KEY_O) {
+        } else if (keyval == GDK_KEY_o) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_open_dialog(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_n || event->keyval == GDK_KEY_N) {
+        } else if (keyval == GDK_KEY_n) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_new_document(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_w || event->keyval == GDK_KEY_W) {
+        } else if (keyval == GDK_KEY_w) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_close_active_document(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_q || event->keyval == GDK_KEY_Q) {
+        } else if (keyval == GDK_KEY_q) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_quit(app);
                 return TRUE;
             }
-        } else if (event->keyval == GDK_KEY_d || event->keyval == GDK_KEY_D) {
+        } else if (keyval == GDK_KEY_d) {
             App *app = get_app_from_view(view);
             if (app) {
                 app_show_diff_dialog(app);
@@ -1171,7 +1175,7 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     int bpr = doc->bytes_per_row;
     if (bpr <= 0) bpr = 16;
     hxd_size_t sz = pt_get_size(doc->pt);
-    bool is_shift = (event->state & GDK_SHIFT_MASK) != 0;
+    bool is_shift = (state & GDK_SHIFT_MASK) != 0;
 
     switch (event->keyval) {
         case GDK_KEY_Left: {
