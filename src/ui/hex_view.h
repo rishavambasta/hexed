@@ -18,6 +18,7 @@ struct _HexView {
 
     document_t               *doc;
     PangoFontDescription    *font_desc;
+    PangoFontDescription    *bold_font_desc;
     int                       char_width;
     int                       char_height;
     int                       line_height;

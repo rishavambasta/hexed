@@ -185,10 +185,10 @@ static void draw_selection_column_polygon(HexView *view, cairo_t *cr, bool is_he
 
     const double corner_radius = 3.5;
 
-    #define PAINT_NAVY_SELECTION() do { \
-        cairo_set_source_rgba(cr, 0.06, 0.20, 0.60, 0.25); \
+    #define PAINT_TEAL_GREEN_SELECTION() do { \
+        cairo_set_source_rgba(cr, 0.00, 0.78, 0.55, 0.30); \
         cairo_fill_preserve(cr); \
-        cairo_set_source_rgba(cr, 0.12, 0.35, 0.85, 0.85); \
+        cairo_set_source_rgba(cr, 0.00, 0.92, 0.65, 1.0); \
         cairo_set_line_width(cr, 1.0); \
         cairo_stroke(cr); \
     } while (0)
@@ -202,7 +202,7 @@ static void draw_selection_column_polygon(HexView *view, cairo_t *cr, bool is_he
             {x_s, y_bot}
         };
         draw_rounded_polygon(cr, pts, 4, corner_radius);
-        PAINT_NAVY_SELECTION();
+        PAINT_TEAL_GREEN_SELECTION();
     } else if (r_last == r_first + 1 && c_first > c_last) {
         // Two rows that do not overlap horizontally -> two separate rounded boxes
         double y_mid = view->header_height + (double)(r_first + 1 - v_start) * view->line_height;
@@ -213,7 +213,7 @@ static void draw_selection_column_polygon(HexView *view, cairo_t *cr, bool is_he
             {x_s, y_mid - 0.5}
         };
         draw_rounded_polygon(cr, pts1, 4, corner_radius);
-        PAINT_NAVY_SELECTION();
+        PAINT_TEAL_GREEN_SELECTION();
 
         DPoint pts2[4] = {
             {x_min, y_mid + 0.5},
@@ -222,7 +222,7 @@ static void draw_selection_column_polygon(HexView *view, cairo_t *cr, bool is_he
             {x_min, y_bot}
         };
         draw_rounded_polygon(cr, pts2, 4, corner_radius);
-        PAINT_NAVY_SELECTION();
+        PAINT_TEAL_GREEN_SELECTION();
     } else {
         // Connected multi-line polygon
         double y_mid1 = view->header_height + (double)(r_first + 1 - v_start) * view->line_height;
@@ -250,12 +250,12 @@ static void draw_selection_column_polygon(HexView *view, cairo_t *cr, bool is_he
         }
 
         draw_rounded_polygon(cr, pts, n, corner_radius);
-        PAINT_NAVY_SELECTION();
+        PAINT_TEAL_GREEN_SELECTION();
     }
 
     #undef GET_L
     #undef GET_R
-    #undef PAINT_NAVY_SELECTION
+    #undef PAINT_TEAL_GREEN_SELECTION
 }
 
 static void draw_selection_layer(HexView *view, cairo_t *cr, int first_line, int lines_to_draw) {
@@ -296,6 +296,8 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     PangoContext *ctx = gtk_widget_get_pango_context(widget);
     PangoLayout *layout = pango_layout_new(ctx);
     pango_layout_set_font_description(layout, view->font_desc);
+    PangoLayout *bold_layout = pango_layout_new(ctx);
+    pango_layout_set_font_description(bold_layout, view->bold_font_desc ? view->bold_font_desc : view->font_desc);
 
     int bpr = view->doc->bytes_per_row;
     if (bpr <= 0) bpr = 16;
@@ -458,27 +460,30 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
                         if (tc->text_r > 0.5) {
                             cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
                         } else {
-                            cairo_set_source_rgb(cr, 0.05, 0.12, 0.35);
+                            cairo_set_source_rgb(cr, 0.00, 0.20, 0.15);
                         }
                     } else {
                         cairo_set_source_rgb(cr, tc->text_r, tc->text_g, tc->text_b);
                     }
                 }
 
+                PangoLayout *target_layout = is_selected ? bold_layout : layout;
+
                 // Show hex
-                pango_layout_set_text(layout, hex_text, -1);
+                pango_layout_set_text(target_layout, hex_text, -1);
                 cairo_move_to(cr, byte_x, y + 2);
-                pango_cairo_show_layout(cr, layout);
+                pango_cairo_show_layout(cr, target_layout);
 
                 // Show ascii
-                pango_layout_set_text(layout, ascii_text, -1);
+                pango_layout_set_text(target_layout, ascii_text, -1);
                 cairo_move_to(cr, ascii_x, y + 2);
-                pango_cairo_show_layout(cr, layout);
+                pango_cairo_show_layout(cr, target_layout);
             }
         }
     }
 
     g_object_unref(layout);
+    g_object_unref(bold_layout);
     return FALSE;
 }
 
@@ -1323,6 +1328,8 @@ HexView *hex_view_create(document_t *doc) {
     HexView *view = calloc(1, sizeof(HexView));
     view->doc = doc;
     view->font_desc = pango_font_description_from_string(DEFAULT_FONT);
+    view->bold_font_desc = pango_font_description_copy(view->font_desc);
+    pango_font_description_set_weight(view->bold_font_desc, PANGO_WEIGHT_BOLD);
     view->font_size_pt = 10;
     view->column_interlacing = true;
     view->cross_highlighting = true;
@@ -1387,6 +1394,7 @@ GtkWidget *hex_view_get_tab_label(HexView *view) {
 void hex_view_free(HexView *view) {
     if (!view) return;
     if (view->font_desc) pango_font_description_free(view->font_desc);
+    if (view->bold_font_desc) pango_font_description_free(view->bold_font_desc);
     free(view);
 }
 
@@ -1433,6 +1441,7 @@ void hex_view_zoom_in(HexView *view) {
     if (view->font_size_pt < 36) {
         view->font_size_pt++;
         pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
+        if (view->bold_font_desc) pango_font_description_set_size(view->bold_font_desc, view->font_size_pt * PANGO_SCALE);
         update_metrics(view);
         update_scroll_adjustment(view);
         gtk_widget_queue_draw(view->drawing_area);
@@ -1444,6 +1453,7 @@ void hex_view_zoom_out(HexView *view) {
     if (view->font_size_pt > 6) {
         view->font_size_pt--;
         pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
+        if (view->bold_font_desc) pango_font_description_set_size(view->bold_font_desc, view->font_size_pt * PANGO_SCALE);
         update_metrics(view);
         update_scroll_adjustment(view);
         gtk_widget_queue_draw(view->drawing_area);
@@ -1454,6 +1464,7 @@ void hex_view_zoom_reset(HexView *view) {
     if (!view) return;
     view->font_size_pt = 10;
     pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
+    if (view->bold_font_desc) pango_font_description_set_size(view->bold_font_desc, view->font_size_pt * PANGO_SCALE);
     update_metrics(view);
     update_scroll_adjustment(view);
     gtk_widget_queue_draw(view->drawing_area);
