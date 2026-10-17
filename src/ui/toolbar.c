@@ -5,7 +5,27 @@
 #include "../version.h"
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+static int get_exe_path(char *buf, size_t buf_size) {
+    DWORD ret = GetModuleFileNameA(NULL, buf, (DWORD)buf_size);
+    if (ret > 0 && ret < buf_size) {
+        buf[ret] = '\0';
+        return 1;
+    }
+    return 0;
+}
+#else
 #include <unistd.h>
+static int get_exe_path(char *buf, size_t buf_size) {
+    ssize_t n = readlink("/proc/self/exe", buf, buf_size - 1);
+    if (n > 0) {
+        buf[n] = '\0';
+        return 1;
+    }
+    return 0;
+}
+#endif
 
 static void resolve_icon_path(const char *icon_file, char *buf, size_t buf_size) {
     hxd_theme_t cur_theme = theme_get_current();
@@ -25,9 +45,7 @@ static void resolve_icon_path(const char *icon_file, char *buf, size_t buf_size)
         }
 
         char exe[512];
-        ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
-        if (n > 0) {
-            exe[n] = '\0';
+        if (get_exe_path(exe, sizeof(exe))) {
             char *dir = g_path_get_dirname(exe);
             snprintf(buf, buf_size, "%s/../assets/icons/light/%s", dir, icon_file);
             if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }
@@ -52,9 +70,7 @@ static void resolve_icon_path(const char *icon_file, char *buf, size_t buf_size)
     }
 
     char exe[512];
-    ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
-    if (n > 0) {
-        exe[n] = '\0';
+    if (get_exe_path(exe, sizeof(exe))) {
         char *dir = g_path_get_dirname(exe);
         snprintf(buf, buf_size, "%s/../assets/icons/%s", dir, icon_file);
         if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }

@@ -3,6 +3,7 @@
 
 Unicode true
 Target amd64-unicode
+SetCompressor /SOLID lzma
 
 !define PRODUCT_NAME "HexEd"
 !define PRODUCT_VERSION "1.2"
@@ -40,11 +41,21 @@ ShowUnInstDetails show
 Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
   SetOverwrite ifnewer
-  File "..\..\bin\hexed.exe"
-  File "..\..\README.md"
-  
+  File "..\..\build\win64_staging\hexed.exe"
+  File "..\..\build\win64_staging\README.md"
+  File "..\..\build\win64_staging\*.dll"
+
+  SetOutPath "$INSTDIR\etc"
+  File /r "..\..\build\win64_staging\etc\*.*"
+
+  SetOutPath "$INSTDIR\lib"
+  File /r "..\..\build\win64_staging\lib\*.*"
+
+  SetOutPath "$INSTDIR\share"
+  File /r "..\..\build\win64_staging\share\*.*"
+
   SetOutPath "$INSTDIR\assets"
-  File /r "..\..\assets\*.*"
+  File /r "..\..\build\win64_staging\assets\*.*"
 
   ; Create shortcuts
   CreateDirectory "$SMPROGRAMS\HexEd"
@@ -73,7 +84,11 @@ Section Uninstall
 
   Delete "$INSTDIR\hexed.exe"
   Delete "$INSTDIR\README.md"
+  Delete "$INSTDIR\*.dll"
   Delete "$INSTDIR\uninst.exe"
+  RMDir /r "$INSTDIR\etc"
+  RMDir /r "$INSTDIR\lib"
+  RMDir /r "$INSTDIR\share"
   RMDir /r "$INSTDIR\assets"
   RMDir "$INSTDIR"
 
