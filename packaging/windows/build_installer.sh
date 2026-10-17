@@ -56,9 +56,23 @@ mkdir -p "$STAGING/etc"
 cp -r "$PROJECT_ROOT"/tools/gtk3-win64/mingw64/etc/* "$STAGING/etc/"
 mkdir -p "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders"
 cp "$PROJECT_ROOT"/tools/gtk3-win64/mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders/*.dll "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/loaders/"
-cp "$PROJECT_ROOT"/tools/gtk3-win64/mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/"
+if [ -f "$PROJECT_ROOT/tools/gtk3-win64/mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache" ]; then
+    cp "$PROJECT_ROOT/tools/gtk3-win64/mingw64/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache" "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/"
+elif [ -f "$PROJECT_ROOT/packaging/windows/loaders.cache" ]; then
+    cp "$PROJECT_ROOT/packaging/windows/loaders.cache" "$STAGING/lib/gdk-pixbuf-2.0/2.10.0/"
+fi
+
 mkdir -p "$STAGING/share/glib-2.0/schemas"
-cp "$PROJECT_ROOT"/tools/gtk3-win64/mingw64/share/glib-2.0/schemas/gschemas.compiled "$STAGING/share/glib-2.0/schemas/"
+if [ ! -f "$PROJECT_ROOT/tools/gtk3-win64/mingw64/share/glib-2.0/schemas/gschemas.compiled" ]; then
+    if which glib-compile-schemas >/dev/null 2>&1; then
+        glib-compile-schemas "$PROJECT_ROOT/tools/gtk3-win64/mingw64/share/glib-2.0/schemas"
+    fi
+fi
+if [ -f "$PROJECT_ROOT/tools/gtk3-win64/mingw64/share/glib-2.0/schemas/gschemas.compiled" ]; then
+    cp "$PROJECT_ROOT/tools/gtk3-win64/mingw64/share/glib-2.0/schemas/gschemas.compiled" "$STAGING/share/glib-2.0/schemas/"
+elif [ -f "$PROJECT_ROOT/packaging/windows/gschemas.compiled" ]; then
+    cp "$PROJECT_ROOT/packaging/windows/gschemas.compiled" "$STAGING/share/glib-2.0/schemas/"
+fi
 mkdir -p "$STAGING/share/icons"
 cp -r "$PROJECT_ROOT"/tools/gtk3-win64/mingw64/share/icons/* "$STAGING/share/icons/" 2>/dev/null || true
 mkdir -p "$STAGING/assets"
