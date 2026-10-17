@@ -2,6 +2,7 @@
 #define HXD_BOTTOMBAR_H
 
 #include "../core/types.h"
+#include "../core/document.h"
 #include <gtk/gtk.h>
 
 typedef struct _App App;
@@ -31,12 +32,26 @@ typedef struct _BottomBar {
     GtkListStore *stat_store;
 
     // File Comparison
+    GtkWidget *fc_page;
     GtkWidget *fc_entry_path;
+    GtkWidget *fc_lbl_summary;
     GtkWidget *fc_diff_tree;
     GtkListStore *fc_diff_store;
+    GtkTreeViewColumn *fc_col_diff;
+    GtkTreeViewColumn *fc_col_off;
+    GtkTreeViewColumn *fc_col_len;
+    GtkTreeViewColumn *fc_col_f1;
+    GtkTreeViewColumn *fc_col_f2;
+    bool       fc_diff_syncing;
 } BottomBar;
 
 BottomBar *bottombar_create(App *app);
 void       bottombar_update(BottomBar *bb, App *app);
+void       bottombar_load_diff_chunks(BottomBar *bb,
+                                      document_t *doc1,
+                                      document_t *doc2,
+                                      const app_diff_chunk_t *chunks,
+                                      size_t chunk_count);
+void       bottombar_select_diff_row(BottomBar *bb, size_t chunk_idx);
 
 #endif // HXD_BOTTOMBAR_H

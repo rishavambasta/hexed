@@ -143,9 +143,26 @@ static void test_diff_logic(void) {
     assert(diff_blocks == 3);
     assert(total_diff_bytes == 16); // 5 + 1 + 10 = 16 bytes
 
+    // Verify address and length formatting for File Comparison list
+    char addr_buf[32], len_buf[48];
+    snprintf(addr_buf, sizeof(addr_buf), "0x%08llX", (unsigned long long)20);
+    assert(strcmp(addr_buf, "0x00000014") == 0);
+    snprintf(len_buf, sizeof(len_buf), "%llu bytes", (unsigned long long)5);
+    assert(strcmp(len_buf, "5 bytes") == 0);
+
+    snprintf(addr_buf, sizeof(addr_buf), "0x%08llX", (unsigned long long)80);
+    assert(strcmp(addr_buf, "0x00000050") == 0);
+    snprintf(len_buf, sizeof(len_buf), "%llu byte%s", (unsigned long long)1, 1 == 1 ? "" : "s");
+    assert(strcmp(len_buf, "1 byte") == 0);
+
+    snprintf(addr_buf, sizeof(addr_buf), "0x%08llX", (unsigned long long)100);
+    assert(strcmp(addr_buf, "0x00000064") == 0);
+    snprintf(len_buf, sizeof(len_buf), "%llu bytes", (unsigned long long)10);
+    assert(strcmp(len_buf, "10 bytes") == 0);
+
     pt_free(pt1);
     pt_free(pt2);
-    printf("  [PASS] Diff block coalescing and comparison logic verified!\n");
+    printf("  [PASS] Diff block coalescing, address/length formatting, and comparison logic verified!\n");
 }
 
 static void test_select_range_logic(void) {

@@ -86,8 +86,26 @@ void        app_show_goto_dialog(App *app);
 void        app_show_bitwise_op_dialog(App *app);
 void        app_show_diff_dialog(App *app);
 void        app_open_diff_view(App *app, document_t *doc1, document_t *doc2);
+typedef struct _app_diff_view_state_t {
+    App              *app;
+    document_t       *doc1;
+    document_t       *doc2;
+    HexView          *v1;
+    HexView          *v2;
+    GtkWidget        *paned;
+    GtkWidget        *tab_content;
+    GtkWidget        *lbl_info;
+    GtkWidget        *btn_orient;
+    app_diff_chunk_t *chunks;
+    size_t            chunk_count;
+    size_t            current_chunk;
+    bool              syncing_scroll;
+    bool              is_horizontal;
+} app_diff_view_state_t;
+
 void        app_show_settings_dialog(App *app);
 void        app_show_controls_dialog(App *app);
 void        app_show_about_dialog(App *app);
+void        app_diff_view_goto_chunk(app_diff_view_state_t *st, size_t chunk_idx);
 
 #endif // HXD_APP_H

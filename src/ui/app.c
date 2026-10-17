@@ -12,11 +12,20 @@
 
 static gboolean on_window_delete_event(GtkWidget *widget, GdkEvent *event, gpointer user_data);
 static gboolean on_app_window_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data);
+static void editor_diff_update_ui(app_diff_view_state_t *st);
 
 static void on_tab_switch(GtkNotebook *nb, GtkWidget *page, guint page_num, gpointer user_data) {
     (void)nb;
-    (void)page;
     App *app = (App *)user_data;
+    if (!app) return;
+
+    app_diff_view_state_t *st = page ? g_object_get_data(G_OBJECT(page), "diff_state") : NULL;
+    if (st) {
+        app->active_view = st->v1;
+        editor_diff_update_ui(st);
+        return;
+    }
+
     GList *elem = g_list_nth(app->hex_views, page_num);
     if (elem) {
         app->active_view = (HexView *)elem->data;
@@ -708,27 +717,11 @@ void app_show_goto_dialog(App *app) { dialog_show_goto(app); }
 void app_show_bitwise_op_dialog(App *app) { dialog_show_bitwise_op(app); }
 void app_show_diff_dialog(App *app) { dialog_show_diff(app); }
 
-typedef struct {
-    hxd_offset_t offset;
-    hxd_size_t   length;
-} app_diff_chunk_t;
-
-typedef struct {
-    App              *app;
-    document_t       *doc1;
-    document_t       *doc2;
-    HexView          *v1;
-    HexView          *v2;
-    GtkWidget        *paned;
-    GtkWidget        *tab_content;
-    GtkWidget        *lbl_info;
-    GtkWidget        *btn_orient;
-    app_diff_chunk_t *chunks;
-    size_t            chunk_count;
-    size_t            current_chunk;
-    bool              syncing_scroll;
-    bool              is_horizontal;
-} app_diff_view_state_t;
+void app_diff_view_goto_chunk(app_diff_view_state_t *st, size_t chunk_idx) {
+    if (!st || chunk_idx >= st->chunk_count) return;
+    st->current_chunk = chunk_idx;
+    editor_diff_update_ui(st);
+}
 
 static void on_editor_diff_v1_scrolled(GtkAdjustment *adj, gpointer user_data) {
     app_diff_view_state_t *st = (app_diff_view_state_t *)user_data;
@@ -772,6 +765,10 @@ static void editor_diff_update_ui(app_diff_view_state_t *st) {
              (unsigned long long)c.offset, (unsigned long long)c.length,
              c.length == 1 ? "" : "s");
     gtk_label_set_markup(GTK_LABEL(st->lbl_info), buf);
+
+    if (st->app && st->app->bottombar) {
+        bottombar_select_diff_row(st->app->bottombar, st->current_chunk);
+    }
 }
 
 static void on_editor_diff_prev(GtkButton *btn, gpointer user_data) {
@@ -1066,6 +1063,17 @@ void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
     gtk_notebook_set_tab_reorderable(GTK_NOTEBOOK(app->doc_notebook), vbox, TRUE);
     gtk_widget_show_all(vbox);
     gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), page);
+
+    // Populate File Comparison tab in BottomBar and switch to it
+    if (app->bottombar) {
+        bottombar_load_diff_chunks(app->bottombar, doc1, doc2, st->chunks, st->chunk_count);
+        if (app->bottombar->fc_page) {
+            int fc_page_idx = gtk_notebook_page_num(GTK_NOTEBOOK(app->bottombar->notebook), app->bottombar->fc_page);
+            if (fc_page_idx >= 0) {
+                gtk_notebook_set_current_page(GTK_NOTEBOOK(app->bottombar->notebook), fc_page_idx);
+            }
+        }
+    }
 
     editor_diff_update_ui(st);
 }

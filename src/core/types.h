@@ -58,4 +58,9 @@ static inline bool hxd_range_contains(hxd_range_t r, hxd_offset_t off) {
     return off >= r.start && off < (r.start + r.length);
 }
 
+typedef struct {
+    hxd_offset_t offset;
+    hxd_size_t   length;
+} app_diff_chunk_t;
+
 #endif // HXD_TYPES_H

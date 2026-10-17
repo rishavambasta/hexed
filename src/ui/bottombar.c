@@ -101,6 +101,232 @@ static void on_bm_row_activated(GtkTreeView *tree, GtkTreePath *path, GtkTreeVie
  * File Comparison Callbacks
  * ========================================================================= */
 
+static void format_chunk_preview(piece_table_t *pt, hxd_offset_t off, hxd_size_t len, char *buf, size_t buf_sz) {
+    if (!pt) {
+        snprintf(buf, buf_sz, "-");
+        return;
+    }
+    hxd_size_t total_sz = pt_get_size(pt);
+    if (off >= total_sz) {
+        snprintf(buf, buf_sz, "<EOF>");
+        return;
+    }
+
+    uint8_t data[8];
+    size_t to_read = (len < sizeof(data)) ? (size_t)len : sizeof(data);
+    if (off + to_read > total_sz) {
+        to_read = (size_t)(total_sz - off);
+    }
+    hxd_size_t read_bytes = pt_read_bytes(pt, off, data, to_read, NULL);
+
+    if (read_bytes == 0) {
+        snprintf(buf, buf_sz, "<EOF>");
+        return;
+    }
+
+    if (len == 1 && read_bytes == 1) {
+        uint8_t b = data[0];
+        snprintf(buf, buf_sz, "%02X ('%c')", b, (b >= 32 && b <= 126) ? b : '.');
+        return;
+    }
+
+    char hex_part[32] = {0};
+    char ascii_part[16] = {0};
+    size_t hex_pos = 0;
+    size_t asc_pos = 0;
+
+    for (size_t i = 0; i < (size_t)read_bytes && i < 4; i++) {
+        hex_pos += snprintf(hex_part + hex_pos, sizeof(hex_part) - hex_pos, "%02X ", data[i]);
+        uint8_t b = data[i];
+        ascii_part[asc_pos++] = (b >= 32 && b <= 126) ? (char)b : '.';
+    }
+    ascii_part[asc_pos] = '\0';
+
+    if (len > 4 || (size_t)read_bytes < len) {
+        snprintf(buf, buf_sz, "%s.. [%s..]", hex_part, ascii_part);
+    } else {
+        snprintf(buf, buf_sz, "%s [%s]", hex_part, ascii_part);
+    }
+}
+
+void bottombar_load_diff_chunks(BottomBar *bb,
+                                document_t *doc1,
+                                document_t *doc2,
+                                const app_diff_chunk_t *chunks,
+                                size_t chunk_count) {
+    if (!bb || !bb->fc_diff_store) return;
+
+    gtk_list_store_clear(bb->fc_diff_store);
+
+    const char *name1 = (doc1 && doc1->display_name) ? doc1->display_name : "File 1";
+    const char *name2 = (doc2 && doc2->display_name) ? doc2->display_name : "File 2";
+
+    if (bb->fc_col_f1) gtk_tree_view_column_set_title(bb->fc_col_f1, name1);
+    if (bb->fc_col_f2) gtk_tree_view_column_set_title(bb->fc_col_f2, name2);
+
+    if (doc2 && doc2->filepath && bb->fc_entry_path) {
+        gtk_entry_set_text(GTK_ENTRY(bb->fc_entry_path), doc2->filepath);
+    }
+
+    if (bb->fc_lbl_summary) {
+        char sum_buf[256];
+        if (chunk_count == 0) {
+            snprintf(sum_buf, sizeof(sum_buf), "Files are 100%% identical (0 differences found).");
+        } else {
+            snprintf(sum_buf, sizeof(sum_buf),
+                     "Found %zu difference%s between %s and %s",
+                     chunk_count, chunk_count == 1 ? "" : "s", name1, name2);
+        }
+        gtk_label_set_text(GTK_LABEL(bb->fc_lbl_summary), sum_buf);
+    }
+
+    if (chunk_count == 0 || !chunks) {
+        return;
+    }
+
+    bb->fc_diff_syncing = true;
+    for (size_t i = 0; i < chunk_count; i++) {
+        GtkTreeIter iter;
+        gtk_list_store_append(bb->fc_diff_store, &iter);
+
+        char num_str[32];
+        snprintf(num_str, sizeof(num_str), "%zu", i + 1);
+
+        char off_str[32];
+        snprintf(off_str, sizeof(off_str), "0x%08llX", (unsigned long long)chunks[i].offset);
+
+        char len_str[48];
+        if (chunks[i].length >= 16) {
+            snprintf(len_str, sizeof(len_str), "%llu bytes (0x%llX)",
+                     (unsigned long long)chunks[i].length,
+                     (unsigned long long)chunks[i].length);
+        } else {
+            snprintf(len_str, sizeof(len_str), "%llu byte%s",
+                     (unsigned long long)chunks[i].length,
+                     chunks[i].length == 1 ? "" : "s");
+        }
+
+        char p1_str[64] = {0};
+        char p2_str[64] = {0};
+        format_chunk_preview(doc1 ? doc1->pt : NULL, chunks[i].offset, chunks[i].length, p1_str, sizeof(p1_str));
+        format_chunk_preview(doc2 ? doc2->pt : NULL, chunks[i].offset, chunks[i].length, p2_str, sizeof(p2_str));
+
+        gtk_list_store_set(bb->fc_diff_store, &iter,
+                           0, num_str,
+                           1, off_str,
+                           2, len_str,
+                           3, p1_str,
+                           4, p2_str,
+                           5, (guint64)chunks[i].offset,
+                           6, (guint64)chunks[i].length,
+                           7, (guint)i,
+                           -1);
+    }
+    bb->fc_diff_syncing = false;
+}
+
+void bottombar_select_diff_row(BottomBar *bb, size_t chunk_idx) {
+    if (!bb || !bb->fc_diff_tree || !bb->fc_diff_store) return;
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(bb->fc_diff_tree));
+    if (!sel) return;
+
+    GtkTreeModel *model = NULL;
+    GtkTreeIter iter;
+    if (gtk_tree_selection_get_selected(sel, &model, &iter)) {
+        guint cur_idx = 0;
+        gtk_tree_model_get(model, &iter, 7, &cur_idx, -1);
+        if (cur_idx == (guint)chunk_idx) {
+            return;
+        }
+    }
+
+    bb->fc_diff_syncing = true;
+    GtkTreePath *path = gtk_tree_path_new_from_indices((gint)chunk_idx, -1);
+    gtk_tree_view_set_cursor(GTK_TREE_VIEW(bb->fc_diff_tree), path, NULL, FALSE);
+    gtk_tree_path_free(path);
+    bb->fc_diff_syncing = false;
+}
+
+static void on_fc_diff_selected(BottomBar *bb) {
+    if (!bb || bb->fc_diff_syncing) return;
+    App *app = (App *)g_object_get_data(G_OBJECT(bb->notebook), "app");
+    if (!app) return;
+
+    GtkTreeSelection *sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(bb->fc_diff_tree));
+    GtkTreeModel *model = NULL;
+    GtkTreeIter iter;
+    if (!gtk_tree_selection_get_selected(sel, &model, &iter)) {
+        return;
+    }
+
+    guint64 off = 0;
+    guint64 len = 0;
+    guint chunk_idx = 0;
+    gtk_tree_model_get(model, &iter,
+                       5, &off,
+                       6, &len,
+                       7, &chunk_idx,
+                       -1);
+
+    int cur_page = gtk_notebook_get_current_page(GTK_NOTEBOOK(app->doc_notebook));
+    GtkWidget *page = (cur_page >= 0) ? gtk_notebook_get_nth_page(GTK_NOTEBOOK(app->doc_notebook), cur_page) : NULL;
+    app_diff_view_state_t *st = page ? g_object_get_data(G_OBJECT(page), "diff_state") : NULL;
+
+    if (!st) {
+        int total = gtk_notebook_get_n_pages(GTK_NOTEBOOK(app->doc_notebook));
+        for (int i = 0; i < total; i++) {
+            GtkWidget *p = gtk_notebook_get_nth_page(GTK_NOTEBOOK(app->doc_notebook), i);
+            if (p) {
+                app_diff_view_state_t *cand = g_object_get_data(G_OBJECT(p), "diff_state");
+                if (cand) {
+                    gtk_notebook_set_current_page(GTK_NOTEBOOK(app->doc_notebook), i);
+                    st = cand;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (st) {
+        bb->fc_diff_syncing = true;
+        app_diff_view_goto_chunk(st, (size_t)chunk_idx);
+        bb->fc_diff_syncing = false;
+    } else {
+        document_t *doc = app_get_active_document(app);
+        if (doc) {
+            doc_set_cursor(doc, off, false);
+            if (len > 0) {
+                doc_set_selection(doc, off, len);
+            }
+            if (app->active_view) {
+                hex_view_scroll_to_offset(app->active_view, off);
+                hex_view_refresh(app->active_view);
+            }
+            app_update_ui(app);
+        }
+    }
+}
+
+static void on_fc_diff_cursor_changed(GtkTreeView *tree, gpointer user_data) {
+    (void)tree;
+    on_fc_diff_selected((BottomBar *)user_data);
+}
+
+static void on_fc_diff_activated(GtkTreeView *tree, GtkTreePath *path, GtkTreeViewColumn *col, gpointer user_data) {
+    (void)tree;
+    (void)path;
+    (void)col;
+    on_fc_diff_selected((BottomBar *)user_data);
+}
+
+static gboolean on_fc_diff_button_release(GtkWidget *widget, GdkEventButton *event, gpointer user_data) {
+    (void)widget;
+    if (event->button == 1) {
+        on_fc_diff_selected((BottomBar *)user_data);
+    }
+    return FALSE;
+}
+
 static void on_fc_browse_clicked(GtkButton *btn, gpointer user_data) {
     (void)btn;
     BottomBar *bb = (BottomBar *)user_data;
@@ -136,73 +362,75 @@ static void on_fc_compare_clicked(GtkButton *btn, gpointer user_data) {
     piece_table_t *cmp_pt = pt_open_file(cmp_path);
     if (!cmp_pt) return;
 
-    gtk_list_store_clear(bb->fc_diff_store);
-
     hxd_size_t sz1 = pt_get_size(doc->pt);
     hxd_size_t sz2 = pt_get_size(cmp_pt);
     hxd_size_t max_sz = (sz1 > sz2) ? sz1 : sz2;
 
-    uint8_t b1[4096], b2[4096];
-    hxd_offset_t off = 0;
-    size_t diff_count = 0;
+    size_t cap = 64;
+    app_diff_chunk_t *chunks = malloc(cap * sizeof(app_diff_chunk_t));
+    size_t chunk_count = 0;
 
-    while (off < max_sz && diff_count < 1000) {
-        hxd_size_t chunk = sizeof(b1);
-        if (off + chunk > max_sz) chunk = max_sz - off;
+    bool in_diff = false;
+    hxd_offset_t d_start = 0;
+    hxd_size_t d_len = 0;
 
-        hxd_size_t r1 = (off < sz1) ? pt_read_bytes(doc->pt, off, b1, chunk, NULL) : 0;
-        hxd_size_t r2 = (off < sz2) ? pt_read_bytes(cmp_pt, off, b2, chunk, NULL) : 0;
+    const size_t CHUNK = 4096;
+    uint8_t b1[CHUNK], b2[CHUNK];
+    hxd_offset_t cur = 0;
 
-        for (hxd_size_t i = 0; i < chunk; i++) {
-            uint8_t byte1 = (i < r1) ? b1[i] : 0;
-            uint8_t byte2 = (i < r2) ? b2[i] : 0;
-            bool exist1 = (off + i < sz1);
-            bool exist2 = (off + i < sz2);
+    while (cur < max_sz && chunk_count < 10000) {
+        size_t n = (max_sz - cur < CHUNK) ? (size_t)(max_sz - cur) : CHUNK;
+        hxd_size_t r1 = (cur < sz1) ? pt_read_bytes(doc->pt, cur, b1, n, NULL) : 0;
+        hxd_size_t r2 = (cur < sz2) ? pt_read_bytes(cmp_pt, cur, b2, n, NULL) : 0;
 
-            if (byte1 != byte2 || exist1 != exist2) {
-                GtkTreeIter iter;
-                gtk_list_store_append(bb->fc_diff_store, &iter);
+        for (size_t i = 0; i < n; i++) {
+            bool has1 = (cur + i < sz1 && i < (size_t)r1);
+            bool has2 = (cur + i < sz2 && i < (size_t)r2);
+            bool diff = (!has1 || !has2 || b1[i] != b2[i]);
 
-                char off_str[32], b1_str[16], b2_str[16];
-                snprintf(off_str, sizeof(off_str), "0x%08llX", (unsigned long long)(off + i));
-                if (exist1) snprintf(b1_str, sizeof(b1_str), "%02X ('%c')", byte1, (byte1 >= 32 && byte1 <= 126) ? byte1 : '.');
-                else strcpy(b1_str, "<EOF>");
-
-                if (exist2) snprintf(b2_str, sizeof(b2_str), "%02X ('%c')", byte2, (byte2 >= 32 && byte2 <= 126) ? byte2 : '.');
-                else strcpy(b2_str, "<EOF>");
-
-                gtk_list_store_set(bb->fc_diff_store, &iter,
-                                   0, off_str,
-                                   1, b1_str,
-                                   2, b2_str,
-                                   3, (guint64)(off + i),
-                                   -1);
-                diff_count++;
-                if (diff_count >= 1000) break;
+            if (diff) {
+                if (!in_diff) {
+                    in_diff = true;
+                    d_start = cur + i;
+                    d_len = 1;
+                } else {
+                    d_len++;
+                }
+            } else {
+                if (in_diff) {
+                    if (chunk_count >= cap) {
+                        cap *= 2;
+                        chunks = realloc(chunks, cap * sizeof(app_diff_chunk_t));
+                    }
+                    chunks[chunk_count].offset = d_start;
+                    chunks[chunk_count].length = d_len;
+                    chunk_count++;
+                    in_diff = false;
+                    if (chunk_count >= 10000) break;
+                }
             }
         }
-        off += chunk;
+        cur += n;
+    }
+    if (in_diff && chunk_count < 10000) {
+        if (chunk_count >= cap) {
+            cap *= 2;
+            chunks = realloc(chunks, cap * sizeof(app_diff_chunk_t));
+        }
+        chunks[chunk_count].offset = d_start;
+        chunks[chunk_count].length = d_len;
+        chunk_count++;
     }
 
+    document_t fake_doc2 = {0};
+    fake_doc2.pt = cmp_pt;
+    fake_doc2.display_name = (char *)cmp_path;
+    fake_doc2.filepath = (char *)cmp_path;
+
+    bottombar_load_diff_chunks(bb, doc, &fake_doc2, chunks, chunk_count);
+
+    free(chunks);
     pt_free(cmp_pt);
-}
-
-static void on_fc_diff_activated(GtkTreeView *tree, GtkTreePath *path, GtkTreeViewColumn *col, gpointer user_data) {
-    (void)tree;
-    (void)col;
-    BottomBar *bb = (BottomBar *)user_data;
-    App *app = (App *)g_object_get_data(G_OBJECT(bb->notebook), "app");
-    document_t *doc = app_get_active_document(app);
-    if (!doc) return;
-
-    GtkTreeIter iter;
-    if (gtk_tree_model_get_iter(GTK_TREE_MODEL(bb->fc_diff_store), &iter, path)) {
-        guint64 off = 0;
-        gtk_tree_model_get(GTK_TREE_MODEL(bb->fc_diff_store), &iter, 3, &off, -1);
-        doc_set_cursor(doc, off, false);
-        hex_view_scroll_to_offset(app->active_view, off);
-        app_update_ui(app);
-    }
 }
 
 /* =========================================================================
@@ -345,6 +573,7 @@ BottomBar *bottombar_create(App *app) {
     {
         GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
         gtk_container_set_border_width(GTK_CONTAINER(box), 6);
+        bb->fc_page = box;
 
         GtkWidget *hb = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
         bb->fc_entry_path = gtk_entry_new();
@@ -365,24 +594,69 @@ BottomBar *bottombar_create(App *app) {
 
         gtk_box_pack_start(GTK_BOX(box), hb, FALSE, FALSE, 0);
 
-        bb->fc_diff_store = gtk_list_store_new(4, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_UINT64);
+        bb->fc_lbl_summary = gtk_label_new("No comparison performed yet.");
+        gtk_widget_set_halign(bb->fc_lbl_summary, GTK_ALIGN_START);
+        gtk_box_pack_start(GTK_BOX(box), bb->fc_lbl_summary, FALSE, FALSE, 2);
+
+        bb->fc_diff_store = gtk_list_store_new(8,
+                                               G_TYPE_STRING,   // 0: Diff #
+                                               G_TYPE_STRING,   // 1: Offset / Address
+                                               G_TYPE_STRING,   // 2: Length
+                                               G_TYPE_STRING,   // 3: File 1 snippet
+                                               G_TYPE_STRING,   // 4: File 2 snippet
+                                               G_TYPE_UINT64,   // 5: Raw offset
+                                               G_TYPE_UINT64,   // 6: Raw length
+                                               G_TYPE_UINT);    // 7: Chunk index
         bb->fc_diff_tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(bb->fc_diff_store));
+        gtk_tree_view_set_headers_visible(GTK_TREE_VIEW(bb->fc_diff_tree), TRUE);
+        gtk_tree_view_set_enable_search(GTK_TREE_VIEW(bb->fc_diff_tree), TRUE);
+        gtk_tree_view_set_search_column(GTK_TREE_VIEW(bb->fc_diff_tree), 1);
 
+        // Column 0: Diff #
+        GtkCellRenderer *r_num = gtk_cell_renderer_text_new();
+        g_object_set(r_num, "xalign", 0.5f, NULL);
+        bb->fc_col_diff = gtk_tree_view_column_new_with_attributes("Diff #", r_num, "text", 0, NULL);
+        gtk_tree_view_column_set_resizable(bb->fc_col_diff, TRUE);
+        gtk_tree_view_column_set_min_width(bb->fc_col_diff, 60);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), bb->fc_col_diff);
+
+        // Column 1: Address
         GtkCellRenderer *r_off = gtk_cell_renderer_text_new();
-        GtkTreeViewColumn *c_off = gtk_tree_view_column_new_with_attributes("Offset", r_off, "text", 0, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), c_off);
+        g_object_set(r_off, "family", "Monospace", NULL);
+        bb->fc_col_off = gtk_tree_view_column_new_with_attributes("Address", r_off, "text", 1, NULL);
+        gtk_tree_view_column_set_resizable(bb->fc_col_off, TRUE);
+        gtk_tree_view_column_set_min_width(bb->fc_col_off, 120);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), bb->fc_col_off);
 
+        // Column 2: Length
+        GtkCellRenderer *r_len = gtk_cell_renderer_text_new();
+        bb->fc_col_len = gtk_tree_view_column_new_with_attributes("Length", r_len, "text", 2, NULL);
+        gtk_tree_view_column_set_resizable(bb->fc_col_len, TRUE);
+        gtk_tree_view_column_set_min_width(bb->fc_col_len, 120);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), bb->fc_col_len);
+
+        // Column 3: File 1
         GtkCellRenderer *r_orig = gtk_cell_renderer_text_new();
-        GtkTreeViewColumn *c_orig = gtk_tree_view_column_new_with_attributes("Active File", r_orig, "text", 1, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), c_orig);
+        g_object_set(r_orig, "family", "Monospace", NULL);
+        bb->fc_col_f1 = gtk_tree_view_column_new_with_attributes("Active File", r_orig, "text", 3, NULL);
+        gtk_tree_view_column_set_resizable(bb->fc_col_f1, TRUE);
+        gtk_tree_view_column_set_min_width(bb->fc_col_f1, 160);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), bb->fc_col_f1);
 
+        // Column 4: File 2
         GtkCellRenderer *r_cmp = gtk_cell_renderer_text_new();
-        GtkTreeViewColumn *c_cmp = gtk_tree_view_column_new_with_attributes("Compared File", r_cmp, "text", 2, NULL);
-        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), c_cmp);
+        g_object_set(r_cmp, "family", "Monospace", NULL);
+        bb->fc_col_f2 = gtk_tree_view_column_new_with_attributes("Compared File", r_cmp, "text", 4, NULL);
+        gtk_tree_view_column_set_resizable(bb->fc_col_f2, TRUE);
+        gtk_tree_view_column_set_min_width(bb->fc_col_f2, 160);
+        gtk_tree_view_append_column(GTK_TREE_VIEW(bb->fc_diff_tree), bb->fc_col_f2);
 
+        g_signal_connect(bb->fc_diff_tree, "cursor-changed", G_CALLBACK(on_fc_diff_cursor_changed), bb);
         g_signal_connect(bb->fc_diff_tree, "row-activated", G_CALLBACK(on_fc_diff_activated), bb);
+        g_signal_connect(bb->fc_diff_tree, "button-release-event", G_CALLBACK(on_fc_diff_button_release), bb);
 
         GtkWidget *sc = gtk_scrolled_window_new(NULL, NULL);
+        gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sc), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
         gtk_container_add(GTK_CONTAINER(sc), bb->fc_diff_tree);
         gtk_box_pack_start(GTK_BOX(box), sc, TRUE, TRUE, 0);
 
