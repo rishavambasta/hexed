@@ -79,24 +79,25 @@ static const char *s_dark_css =
     "scrollbar slider:hover { background-color: #777777; }\n";
 
 static const char *s_light_css =
-    "window, .main-grid { background-color: #f7f7f7; color: #000000; font-family: sans-serif; }\n"
-    "toolbar { background-color: #f0f0f0; border-bottom: 1px solid #d0d0d0; padding: 2px 4px; }\n"
-    "toolbar button { background: transparent; border: none; border-radius: 3px; padding: 3px 6px; color: #333; font-size: 11px; }\n"
-    "toolbar button:hover { background-color: #e0e0e0; }\n"
-    "toolbar button:active { background-color: #d0d0d0; }\n"
-    "toolbar button:disabled { opacity: 0.4; }\n"
-    ".mode-badge-ovr { background-color: #4caf50; color: #fff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n"
-    ".mode-badge-ins { background-color: #ff5722; color: #fff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n"
-    "notebook { background-color: #f0f0f0; }\n"
-    "notebook header.top tab { background-color: #e5e5e5; color: #555; border: 1px solid #ccc; padding: 4px 10px; font-size: 12px; }\n"
-    "notebook header.top tab:checked { background-color: #ffffff; color: #000; border-bottom: 2px solid #0087b8; font-weight: bold; }\n"
-    "statusbar { background-color: #f0f0f0; border-top: 1px solid #ccc; color: #444; font-size: 11px; padding: 2px 8px; }\n"
-    "treeview { background-color: #ffffff; color: #111; font-size: 12px; }\n"
-    "treeview:selected { background-color: #c7eaf7; color: #000; }\n"
-    "entry, spinbutton { background-color: #ffffff; color: #000; border: 1px solid #ccc; border-radius: 3px; padding: 3px 6px; }\n"
-    "paned > separator { background-color: #cccccc; }\n"
-    "scrollbar slider { background-color: #aaaaaa; border-radius: 4px; }\n"
-    "scrollbar slider:hover { background-color: #888888; }\n";
+    "window, .main-grid { background-color: #f8fafc; color: #0f172a; font-family: sans-serif; }\n"
+    "toolbar { background-color: #f1f5f9; border-bottom: 1px solid #cbd5e1; padding: 2px 4px; }\n"
+    "toolbar button { background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 3px 5px; color: #1e293b; font-size: 11px; margin: 1px; }\n"
+    "toolbar button:hover { background-color: #e2e8f0; border-color: #cbd5e1; }\n"
+    "toolbar button:active { background-color: #cbd5e1; border-color: #94a3b8; }\n"
+    "toolbar button:disabled { opacity: 0.35; }\n"
+    ".mode-badge-ovr { background-color: #16a34a; color: #fff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n"
+    ".mode-badge-ins { background-color: #ea580c; color: #fff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n"
+    "notebook { background-color: #f1f5f9; }\n"
+    "notebook header.top tab { background-color: #e2e8f0; color: #475569; border: 1px solid #cbd5e1; padding: 4px 10px; font-size: 12px; }\n"
+    "notebook header.top tab:checked { background-color: #ffffff; color: #0f172a; border-bottom: 2px solid #0d9488; font-weight: bold; }\n"
+    "statusbar { background-color: #f1f5f9; border-top: 1px solid #cbd5e1; color: #475569; font-size: 11px; padding: 2px 8px; }\n"
+    "treeview { background-color: #ffffff; color: #0f172a; font-size: 12px; }\n"
+    "treeview:selected { background-color: #ccfbf1; color: #0f766e; }\n"
+    "entry, spinbutton { background-color: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 6px; }\n"
+    "paned > separator { background-color: #cbd5e1; }\n"
+    "scrollbar slider { background-color: #94a3b8; border-radius: 4px; }\n"
+    "scrollbar slider:hover { background-color: #64748b; }\n";
+
 
 void theme_init(void) {
     if (!s_css_provider) {

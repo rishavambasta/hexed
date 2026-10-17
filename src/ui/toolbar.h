@@ -39,5 +39,7 @@ typedef struct _app_toolbar_t {
 
 app_toolbar_t *toolbar_create(App *app);
 void           toolbar_update_state(app_toolbar_t *tb, App *app);
+void           toolbar_reload_icons(app_toolbar_t *tb);
 
 #endif // HXD_TOOLBAR_H
+

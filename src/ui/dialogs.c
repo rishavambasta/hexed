@@ -1,7 +1,9 @@
 #include "dialogs.h"
 #include "app.h"
 #include "theme.h"
+#include "toolbar.h"
 #include "../version.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1634,7 +1636,11 @@ void dialog_show_settings(App *app) {
         app->bytes_per_row = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(spin_bpr));
 
         theme_set(app->theme);
+        if (app->toolbar) {
+            toolbar_reload_icons(app->toolbar);
+        }
         if (app->active_view) {
+
             hex_view_set_column_interlacing(app->active_view, app->column_interlacing);
             hex_view_set_cross_highlighting(app->active_view, app->cross_highlighting);
             hex_view_set_hex_case(app->active_view, app->hex_case);

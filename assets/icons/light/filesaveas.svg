@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+  <path d="M2 2.5a1 1 0 0 1 1-1h9.5l3 3V11H13a2 2 0 0 0-2 2v4.5H3a1 1 0 0 1-1-1z" fill="#2563eb" stroke="#1e3a8a" stroke-width="1.2" stroke-linejoin="round"/>
+  <rect x="4.5" y="1.5" width="7" height="4.5" rx="0.5" fill="#94a3b8" stroke="#475569" stroke-width="1"/>
+  <rect x="4" y="9.5" width="6.5" height="7" rx="0.5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <g transform="translate(11, 10.5) rotate(45)">
+    <rect x="0" y="0" width="3" height="6.5" fill="#f59e0b" stroke="#b45309" stroke-width="0.8"/>
+    <polygon points="0,6.5 1.5,9.5 3,6.5" fill="#dc2626"/>
+  </g>
+</svg>

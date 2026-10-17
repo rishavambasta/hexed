@@ -1,12 +1,45 @@
 #include "toolbar.h"
 #include "app.h"
 #include "sidebars.h"
+#include "theme.h"
 #include "../version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 static void resolve_icon_path(const char *icon_file, char *buf, size_t buf_size) {
+    hxd_theme_t cur_theme = theme_get_current();
+    bool is_light = (cur_theme == HXD_THEME_LIGHT || cur_theme == HXD_THEME_BW);
+
+    if (is_light) {
+        // Check light-theme icons first
+        snprintf(buf, buf_size, "assets/icons/light/%s", icon_file);
+        if (g_file_test(buf, G_FILE_TEST_EXISTS)) return;
+
+        const char *appdir = g_getenv("APPDIR");
+        if (appdir) {
+            snprintf(buf, buf_size, "%s/usr/share/hexed/assets/icons/light/%s", appdir, icon_file);
+            if (g_file_test(buf, G_FILE_TEST_EXISTS)) return;
+            snprintf(buf, buf_size, "%s/assets/icons/light/%s", appdir, icon_file);
+            if (g_file_test(buf, G_FILE_TEST_EXISTS)) return;
+        }
+
+        char exe[512];
+        ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+        if (n > 0) {
+            exe[n] = '\0';
+            char *dir = g_path_get_dirname(exe);
+            snprintf(buf, buf_size, "%s/../assets/icons/light/%s", dir, icon_file);
+            if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }
+            snprintf(buf, buf_size, "%s/../share/hexed/assets/icons/light/%s", dir, icon_file);
+            if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }
+            snprintf(buf, buf_size, "%s/assets/icons/light/%s", dir, icon_file);
+            if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }
+            g_free(dir);
+        }
+    }
+
+    // Default / Dark theme icon
     snprintf(buf, buf_size, "assets/icons/%s", icon_file);
     if (g_file_test(buf, G_FILE_TEST_EXISTS)) return;
 
@@ -33,9 +66,11 @@ static void resolve_icon_path(const char *icon_file, char *buf, size_t buf_size)
     }
 }
 
-static GtkWidget *create_toolbar_button(const char *icon_file, const char *fallback_name, const char *tooltip) {
-    GtkWidget *btn = gtk_button_new();
-    gtk_widget_set_tooltip_text(btn, tooltip);
+static void update_button_icon(GtkWidget *btn) {
+    if (!btn) return;
+    const char *icon_file = (const char *)g_object_get_data(G_OBJECT(btn), "icon_file");
+    const char *fallback_name = (const char *)g_object_get_data(G_OBJECT(btn), "fallback_name");
+    if (!icon_file) return;
 
     char full_icon_path[512];
     resolve_icon_path(icon_file, full_icon_path, sizeof(full_icon_path));
@@ -46,13 +81,53 @@ static GtkWidget *create_toolbar_button(const char *icon_file, const char *fallb
         img = gtk_image_new_from_pixbuf(pb);
         g_object_unref(pb);
     } else {
-        img = gtk_image_new_from_icon_name(fallback_name, GTK_ICON_SIZE_MENU);
+        img = gtk_image_new_from_icon_name(fallback_name ? fallback_name : "image-missing", GTK_ICON_SIZE_MENU);
     }
 
     gtk_button_set_image(GTK_BUTTON(btn), img);
     gtk_button_set_always_show_image(GTK_BUTTON(btn), TRUE);
+}
+
+static GtkWidget *create_toolbar_button(const char *icon_file, const char *fallback_name, const char *tooltip) {
+    GtkWidget *btn = gtk_button_new();
+    gtk_widget_set_tooltip_text(btn, tooltip);
+
+    g_object_set_data_full(G_OBJECT(btn), "icon_file", g_strdup(icon_file), g_free);
+    g_object_set_data_full(G_OBJECT(btn), "fallback_name", g_strdup(fallback_name), g_free);
+
+    update_button_icon(btn);
     return btn;
 }
+
+void toolbar_reload_icons(app_toolbar_t *tb) {
+    if (!tb) return;
+    update_button_icon(tb->btn_menu);
+    update_button_icon(tb->btn_new);
+    update_button_icon(tb->btn_open);
+    update_button_icon(tb->btn_save);
+    update_button_icon(tb->btn_save_as);
+    update_button_icon(tb->btn_undo);
+    update_button_icon(tb->btn_redo);
+    update_button_icon(tb->btn_copy);
+    update_button_icon(tb->btn_paste);
+    update_button_icon(tb->btn_find);
+    update_button_icon(tb->btn_replace);
+    update_button_icon(tb->btn_delete);
+    update_button_icon(tb->btn_insert);
+    update_button_icon(tb->btn_fill);
+    update_button_icon(tb->btn_gap);
+    update_button_icon(tb->btn_insert_file);
+    update_button_icon(tb->btn_size);
+    update_button_icon(tb->btn_select_range);
+    update_button_icon(tb->btn_goto);
+    update_button_icon(tb->btn_diff);
+    update_button_icon(tb->btn_inspector_toggle);
+    update_button_icon(tb->btn_baseconv_toggle);
+    update_button_icon(tb->btn_controls);
+    update_button_icon(tb->btn_settings);
+    update_button_icon(tb->btn_about);
+}
+
 
 
 static void on_toggle_inspector(GtkButton *btn, gpointer user_data) {
