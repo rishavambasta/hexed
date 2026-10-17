@@ -20,9 +20,10 @@ MAIN_OBJ = $(BUILDDIR)/main.o
 TARGET = $(BINDIR)/hxd
 ALIAS = $(BINDIR)/hexed
 
-.PHONY: all clean test
+.PHONY: all clean test appimage-x86_64 appimage-aarch64 win64-installer package-all
 
 all: $(TARGET) $(ALIAS)
+
 
 $(TARGET): $(CORE_OBJS) $(UI_OBJS) $(MAIN_OBJ) | $(BINDIR)
 	$(CC) $^ $(GTK_LIBS) -o $@
@@ -56,3 +57,15 @@ test: $(CORE_OBJS)
 
 clean:
 	rm -rf $(BUILDDIR) $(BINDIR)
+
+appimage-x86_64: $(TARGET)
+	./packaging/linux/build_appimage_x86_64.sh
+
+appimage-aarch64:
+	./packaging/linux/build_appimage_aarch64.sh
+
+win64-installer:
+	./packaging/windows/build_installer.sh
+
+package-all: appimage-x86_64 appimage-aarch64 win64-installer
+

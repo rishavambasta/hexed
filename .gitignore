@@ -1,6 +1,9 @@
 # Binaries and build artifacts
 build/
 bin/
+dist/
+tools/
+AppDir*/
 *.o
 *.a
 *.so
@@ -8,6 +11,7 @@ bin/
 *.exe
 tests/test_*
 !tests/test_*.c
+
 
 # IDE and editor files
 .vscode/

@@ -3,7 +3,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#ifndef _WIN32
 #include <regex.h>
+#else
+typedef struct { int dummy; } regex_t;
+typedef struct { int rm_so; int rm_eo; } regmatch_t;
+#define REG_EXTENDED 1
+#define REG_ICASE 2
+static inline int regcomp(regex_t *preg, const char *regex, int cflags) { (void)preg; (void)regex; (void)cflags; return 0; }
+static inline int regexec(const regex_t *preg, const char *string, size_t nmatch, regmatch_t pmatch[], int eflags) { (void)preg; (void)string; (void)nmatch; (void)pmatch; (void)eflags; return 1; }
+static inline void regfree(regex_t *preg) { (void)preg; }
+#endif
+
 
 static int hex_val(char c) {
     if (c >= '0' && c <= '9') return c - '0';

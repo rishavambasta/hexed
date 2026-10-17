@@ -1,0 +1,121 @@
+name: Build and Release HexEd
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*', '*.*' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-x86_64:
+    name: Linux x86_64 AppImage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libgtk-3-dev zlib1g-dev python3-cairo python3-pil wget file
+
+      - name: Run Core Tests & Benchmarks
+        run: |
+          make test
+
+      - name: Build Linux x86_64 AppImage
+        run: |
+          ./packaging/linux/build_appimage_x86_64.sh
+
+      - name: Upload x86_64 AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HexEd-1.1-x86_64.AppImage
+          path: dist/HexEd-1.1-x86_64.AppImage
+          if-no-files-found: error
+
+  build-linux-aarch64:
+    name: Linux aarch64 AppImage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Cross-Compilation Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu wget file
+
+      - name: Build Linux aarch64 AppImage
+        run: |
+          ./packaging/linux/build_appimage_aarch64.sh
+
+      - name: Upload aarch64 AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HexEd-1.1-aarch64.AppImage
+          path: dist/HexEd-1.1-aarch64.AppImage
+          if-no-files-found: error
+
+  build-windows-x64:
+    name: Windows 64-bit NSIS Installer
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install MinGW and NSIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-mingw-w64-x86-64 nsis file
+
+      - name: Build Windows 64-bit NSIS Installer
+        run: |
+          ./packaging/windows/build_installer.sh
+
+      - name: Upload Windows Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HexEd-1.1-Setup-win64.exe
+          path: dist/HexEd-1.1-Setup-win64.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [ build-linux-x86_64, build-linux-aarch64, build-windows-x64 ]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum HexEd* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: HexEd ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          files: |
+            dist/HexEd-1.1-x86_64.AppImage
+            dist/HexEd-1.1-aarch64.AppImage
+            dist/HexEd-1.1-Setup-win64.exe
+            dist/SHA256SUMS.txt
+          generate_release_notes: true

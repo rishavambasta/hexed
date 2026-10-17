@@ -5,6 +5,7 @@
 #include "dialogs.h"
 #include "theme.h"
 #include "../core/search.h"
+#include "../version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -112,7 +113,7 @@ static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *
     App *app = (App *)user_data;
 
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(win), "hexed");
+    gtk_window_set_title(GTK_WINDOW(win), HEXED_TITLE_BASE);
     gtk_window_set_default_size(GTK_WINDOW(win), 900, 620);
     g_signal_connect(win, "key-press-event", G_CALLBACK(on_app_window_key_press), app);
 
@@ -190,11 +191,34 @@ App *app_create(void) {
 
     // Main Window
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(app->window), "hexed");
+    gtk_window_set_title(GTK_WINDOW(app->window), HEXED_TITLE_BASE);
     gtk_window_set_default_size(GTK_WINDOW(app->window), 1260, 820);
     g_signal_connect(app->window, "delete-event", G_CALLBACK(on_window_delete_event), app);
     g_signal_connect(app->window, "destroy", G_CALLBACK(gtk_main_quit), NULL);
     g_signal_connect(app->window, "key-press-event", G_CALLBACK(on_app_window_key_press), app);
+
+    // Set Window Icon
+    gtk_window_set_icon_name(GTK_WINDOW(app->window), "hexed");
+    const char *icon_candidates[] = {
+        "assets/icons/hexed.png",
+        "../assets/icons/hexed.png",
+        "../share/hexed/assets/icons/hexed.png"
+    };
+    for (size_t i = 0; i < sizeof(icon_candidates)/sizeof(icon_candidates[0]); i++) {
+        if (g_file_test(icon_candidates[i], G_FILE_TEST_EXISTS)) {
+            gtk_window_set_default_icon_from_file(icon_candidates[i], NULL);
+            break;
+        }
+    }
+    const char *appdir_env = g_getenv("APPDIR");
+    if (appdir_env) {
+        char appdir_icon[512];
+        snprintf(appdir_icon, sizeof(appdir_icon), "%s/usr/share/hexed/assets/icons/hexed.png", appdir_env);
+        if (g_file_test(appdir_icon, G_FILE_TEST_EXISTS)) {
+            gtk_window_set_default_icon_from_file(appdir_icon, NULL);
+        }
+    }
+
 
     app->main_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(app->window), app->main_vbox);
@@ -299,7 +323,7 @@ void app_update_ui(App *app) {
 
     // Update window title
     char title[256];
-    snprintf(title, sizeof(title), "hexed - [%s%s]", doc->display_name, doc->is_modified ? "*" : "");
+    snprintf(title, sizeof(title), "%s - [%s%s]", HEXED_TITLE_BASE, doc->display_name, doc->is_modified ? "*" : "");
     gtk_window_set_title(GTK_WINDOW(app->window), title);
 
     // Update all document tab labels: bold followed by "*" when modified

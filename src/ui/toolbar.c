@@ -1,15 +1,44 @@
 #include "toolbar.h"
 #include "app.h"
 #include "sidebars.h"
+#include "../version.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+
+static void resolve_icon_path(const char *icon_file, char *buf, size_t buf_size) {
+    snprintf(buf, buf_size, "assets/icons/%s", icon_file);
+    if (g_file_test(buf, G_FILE_TEST_EXISTS)) return;
+
+    const char *appdir = g_getenv("APPDIR");
+    if (appdir) {
+        snprintf(buf, buf_size, "%s/usr/share/hexed/assets/icons/%s", appdir, icon_file);
+        if (g_file_test(buf, G_FILE_TEST_EXISTS)) return;
+        snprintf(buf, buf_size, "%s/assets/icons/%s", appdir, icon_file);
+        if (g_file_test(buf, G_FILE_TEST_EXISTS)) return;
+    }
+
+    char exe[512];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (n > 0) {
+        exe[n] = '\0';
+        char *dir = g_path_get_dirname(exe);
+        snprintf(buf, buf_size, "%s/../assets/icons/%s", dir, icon_file);
+        if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }
+        snprintf(buf, buf_size, "%s/../share/hexed/assets/icons/%s", dir, icon_file);
+        if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }
+        snprintf(buf, buf_size, "%s/assets/icons/%s", dir, icon_file);
+        if (g_file_test(buf, G_FILE_TEST_EXISTS)) { g_free(dir); return; }
+        g_free(dir);
+    }
+}
 
 static GtkWidget *create_toolbar_button(const char *icon_file, const char *fallback_name, const char *tooltip) {
     GtkWidget *btn = gtk_button_new();
     gtk_widget_set_tooltip_text(btn, tooltip);
 
-    char full_icon_path[256];
-    snprintf(full_icon_path, sizeof(full_icon_path), "assets/icons/%s", icon_file);
+    char full_icon_path[512];
+    resolve_icon_path(icon_file, full_icon_path, sizeof(full_icon_path));
 
     GdkPixbuf *pb = gdk_pixbuf_new_from_file_at_scale(full_icon_path, 18, 18, TRUE, NULL);
     GtkWidget *img = NULL;
@@ -24,6 +53,7 @@ static GtkWidget *create_toolbar_button(const char *icon_file, const char *fallb
     gtk_button_set_always_show_image(GTK_BUTTON(btn), TRUE);
     return btn;
 }
+
 
 static void on_toggle_inspector(GtkButton *btn, gpointer user_data) {
     (void)btn;
@@ -243,7 +273,7 @@ app_toolbar_t *toolbar_create(App *app) {
     g_signal_connect_swapped(tb->btn_settings, "clicked", G_CALLBACK(app_show_settings_dialog), app);
     gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_settings, FALSE, FALSE, 0);
 
-    tb->btn_about = create_toolbar_button("helpabout.svg", "help-about", "About hexed");
+    tb->btn_about = create_toolbar_button("helpabout.svg", "help-about", "About " HEXED_APP_NAME);
     g_signal_connect_swapped(tb->btn_about, "clicked", G_CALLBACK(app_show_about_dialog), app);
     gtk_box_pack_start(GTK_BOX(tb->toolbar), tb->btn_about, FALSE, FALSE, 0);
 

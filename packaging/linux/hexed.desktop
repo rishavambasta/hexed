@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=HexEd
+Comment=High-Performance Cross-Platform Hex Editor
+Exec=hexed %F
+Icon=hexed
+Terminal=false
+Type=Application
+Categories=Development;Utility;
+MimeType=application/octet-stream;
+StartupNotify=true

@@ -1,6 +1,7 @@
 #include "dialogs.h"
 #include "app.h"
 #include "theme.h"
+#include "../version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1709,13 +1710,13 @@ void dialog_show_controls(App *app) {
 void dialog_show_about(App *app) {
     GtkWidget *dlg = gtk_about_dialog_new();
     gtk_window_set_transient_for(GTK_WINDOW(dlg), GTK_WINDOW(app->window));
-    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dlg), "hexed");
-    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dlg), "1.1");
-    const char *authors[] = { "Rishav Ambasta", NULL };
+    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dlg), HEXED_APP_NAME);
+    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dlg), HEXED_VERSION);
+    const char *authors[] = { HEXED_AUTHOR, NULL };
     gtk_about_dialog_set_authors(GTK_ABOUT_DIALOG(dlg), authors);
-    gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(dlg), "Copyright © 2026 Rishav Ambasta");
+    gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(dlg), "Copyright © 2026 " HEXED_AUTHOR);
     gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(dlg),
-        "hexed: High-performance, cross-platform (Linux & Windows) offline GUI hex editor created by Rishav Ambasta.\n\n"
+        HEXED_APP_NAME ": High-performance, cross-platform (Linux & Windows) offline GUI hex editor created by " HEXED_AUTHOR ".\n\n"
         "Features:\n"
         "• Virtual Piece Table Engine (instant gigabyte file opening & zero lag)\n"
         "• Native Intel HEX & Motorola S-record parsing with sparse gap preservation\n"
