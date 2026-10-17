@@ -76,6 +76,8 @@ void        app_toggle_mode(App *app);
 /* Dialog launchers */
 void        app_show_find(App *app);
 void        app_show_replace(App *app);
+void        app_find_next(App *app);
+void        app_find_prev(App *app);
 void        app_show_fill_dialog(App *app);
 void        app_show_insert_dialog(App *app);
 void        app_show_gap_dialog(App *app);

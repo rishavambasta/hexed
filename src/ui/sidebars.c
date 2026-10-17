@@ -126,16 +126,33 @@ static void on_bc_clear(GtkButton *btn, gpointer user_data) {
 
 static void do_find(Sidebars *sb, App *app, search_direction_t dir) {
     document_t *doc = app_get_active_document(app);
-    if (!doc) return;
+    if (!doc) {
+        if (sb->find_status_lbl) gtk_label_set_text(GTK_LABEL(sb->find_status_lbl), "No active document");
+        return;
+    }
 
     const char *query = gtk_entry_get_text(GTK_ENTRY(sb->find_entry));
-    if (!query || strlen(query) == 0) return;
+    if (!query || strlen(query) == 0) {
+        if (sb->find_status_lbl) gtk_label_set_text(GTK_LABEL(sb->find_status_lbl), "Please enter search text");
+        return;
+    }
 
     search_type_t st = (search_type_t)gtk_combo_box_get_active(GTK_COMBO_BOX(sb->find_type_combo));
     uint8_t *pat = NULL;
     uint8_t *mask = NULL;
     size_t pat_len = 0;
-    if (!search_parse_pattern_ex(query, st, doc->endian, &pat, &mask, &pat_len)) return;
+    if (!search_parse_pattern_ex(query, st, doc->endian, &pat, &mask, &pat_len)) {
+        if (sb->find_status_lbl) {
+            if (st == SEARCH_TYPE_HEX) {
+                gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl),
+                    "<span color='#e06c75'>Invalid hex! (Switch Type to 'ASCII String' to search text)</span>");
+            } else {
+                gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl),
+                    "<span color='#e06c75'>Invalid pattern for selected type</span>");
+            }
+        }
+        return;
+    }
 
     search_params_t sp;
     memset(&sp, 0, sizeof(sp));
@@ -150,20 +167,56 @@ static void do_find(Sidebars *sb, App *app, search_direction_t dir) {
         sp.scope = doc->selection;
     }
 
-    hxd_offset_t start = (dir == SEARCH_DIR_FORWARD) ? (doc->cursor_offset + 1) : (doc->cursor_offset > 0 ? doc->cursor_offset - 1 : 0);
-    hxd_offset_t found = search_find(doc->pt, start, pat, pat_len, &sp);
+    hxd_offset_t start;
+    if (doc->selection.length > 0) {
+        if (dir == SEARCH_DIR_FORWARD) {
+            start = doc->selection.start + 1;
+        } else {
+            start = (doc->selection.start > 0) ? (doc->selection.start - 1) : 0;
+        }
+    } else {
+        start = doc->cursor_offset;
+    }
 
-    if (found == HXD_OFFSET_INVALID && dir == SEARCH_DIR_FORWARD) {
-        // Wrap around
-        found = search_find(doc->pt, 0, pat, pat_len, &sp);
+    hxd_offset_t found = search_find(doc->pt, start, pat, pat_len, &sp);
+    bool wrapped = false;
+
+    if (found == HXD_OFFSET_INVALID) {
+        if (dir == SEARCH_DIR_FORWARD) {
+            found = search_find(doc->pt, 0, pat, pat_len, &sp);
+            if (found != HXD_OFFSET_INVALID) wrapped = true;
+        } else {
+            hxd_offset_t doc_size = pt_get_size(doc->pt);
+            found = search_find(doc->pt, doc_size > 0 ? doc_size - 1 : 0, pat, pat_len, &sp);
+            if (found != HXD_OFFSET_INVALID) wrapped = true;
+        }
     }
 
     if (found != HXD_OFFSET_INVALID) {
         size_t match_len = (st == SEARCH_TYPE_REGEX && sp.matched_len > 0) ? sp.matched_len : pat_len;
-        doc_set_cursor(doc, found, false);
+        doc_set_cursor(doc, found, doc->cursor_in_ascii);
         doc_set_selection(doc, found, match_len);
-        hex_view_scroll_to_offset(app->active_view, found);
+        if (app->active_view) {
+            hex_view_scroll_to_offset(app->active_view, found);
+        }
         app_update_ui(app);
+
+        if (sb->find_status_lbl) {
+            char stat[128];
+            if (wrapped) {
+                snprintf(stat, sizeof(stat), "<span color='#61afef'>Wrapped: match at 0x%llX (%zu B)</span>",
+                         (unsigned long long)found, match_len);
+            } else {
+                snprintf(stat, sizeof(stat), "<span color='#98c379'>Match at 0x%llX (%zu B)</span>",
+                         (unsigned long long)found, match_len);
+            }
+            gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl), stat);
+        }
+    } else {
+        if (sb->find_status_lbl) {
+            gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl),
+                "<span color='#e06c75'>Pattern not found</span>");
+        }
     }
 
     free(pat);
@@ -184,6 +237,40 @@ static void on_find_prev(GtkButton *btn, gpointer user_data) {
     do_find(sb, app, SEARCH_DIR_BACKWARD);
 }
 
+static void on_find_entry_activate(GtkEntry *entry, gpointer user_data) {
+    (void)entry;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    do_find(sb, app, SEARCH_DIR_FORWARD);
+}
+
+static gboolean on_find_entry_key_press(GtkWidget *widget, GdkEventKey *event, gpointer user_data) {
+    (void)widget;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+
+    if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter) {
+        if (event->state & GDK_SHIFT_MASK) {
+            do_find(sb, app, SEARCH_DIR_BACKWARD);
+            return TRUE;
+        }
+    } else if (event->keyval == GDK_KEY_Escape) {
+        if (app && app->active_view && app->active_view->drawing_area) {
+            gtk_widget_grab_focus(app->active_view->drawing_area);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static void on_replace_entry_activate(GtkEntry *entry, gpointer user_data) {
+    (void)entry;
+    Sidebars *sb = (Sidebars *)user_data;
+    App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
+    (void)app;
+    on_find_next(NULL, sb);
+}
+
 static void on_find_all(GtkButton *btn, gpointer user_data) {
     (void)btn;
     Sidebars *sb = (Sidebars *)user_data;
@@ -198,7 +285,13 @@ static void on_find_all(GtkButton *btn, gpointer user_data) {
     uint8_t *pat = NULL;
     uint8_t *mask = NULL;
     size_t pat_len = 0;
-    if (!search_parse_pattern_ex(query, st, doc->endian, &pat, &mask, &pat_len)) return;
+    if (!search_parse_pattern_ex(query, st, doc->endian, &pat, &mask, &pat_len)) {
+        if (sb->find_status_lbl) {
+            gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl),
+                "<span color='#e06c75'>Invalid pattern</span>");
+        }
+        return;
+    }
 
     search_params_t sp;
     memset(&sp, 0, sizeof(sp));
@@ -220,6 +313,13 @@ static void on_find_all(GtkButton *btn, gpointer user_data) {
         gtk_list_store_set(sb->find_results_store, &iter, 0, off_str, 1, (guint64)res->offsets[i], -1);
     }
 
+    if (sb->find_status_lbl) {
+        char stat[128];
+        snprintf(stat, sizeof(stat), "<span color='#98c379'>Found %zu occurrence%s</span>",
+                 res->count, res->count == 1 ? "" : "s");
+        gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl), stat);
+    }
+
     search_results_free(res);
     free(pat);
     if (mask) free(mask);
@@ -236,8 +336,22 @@ static void on_find_result_selected(GtkTreeSelection *sel, gpointer user_data) {
     if (gtk_tree_selection_get_selected(sel, &model, &iter)) {
         guint64 off = 0;
         gtk_tree_model_get(model, &iter, 1, &off, -1);
-        doc_set_cursor(doc, off, false);
-        hex_view_scroll_to_offset(app->active_view, off);
+
+        const char *query = gtk_entry_get_text(GTK_ENTRY(sb->find_entry));
+        search_type_t st = (search_type_t)gtk_combo_box_get_active(GTK_COMBO_BOX(sb->find_type_combo));
+        uint8_t *pat = NULL;
+        size_t pat_len = 0;
+        if (search_parse_pattern(query, st, doc->endian, &pat, &pat_len)) {
+            doc_set_selection(doc, off, pat_len);
+            free(pat);
+        } else {
+            doc_set_selection(doc, off, 1);
+        }
+
+        doc_set_cursor(doc, off, doc->cursor_in_ascii);
+        if (app->active_view) {
+            hex_view_scroll_to_offset(app->active_view, off);
+        }
         app_update_ui(app);
     }
 }
@@ -247,16 +361,43 @@ static void on_replace_click(GtkButton *btn, gpointer user_data) {
     Sidebars *sb = (Sidebars *)user_data;
     App *app = (App *)g_object_get_data(G_OBJECT(sb->right_notebook), "app");
     document_t *doc = app_get_active_document(app);
-    if (!doc || doc->selection.length == 0) return;
+    if (!doc) return;
 
+    const char *query = gtk_entry_get_text(GTK_ENTRY(sb->find_entry));
     const char *rep_text = gtk_entry_get_text(GTK_ENTRY(sb->replace_entry));
-    search_type_t st = (search_type_t)gtk_combo_box_get_active(GTK_COMBO_BOX(sb->find_type_combo));
-    uint8_t *rep = NULL;
-    size_t rep_len = 0;
-    if (!search_parse_pattern(rep_text, st, doc->endian, &rep, &rep_len)) return;
+    if (!query || strlen(query) == 0) return;
 
-    search_replace(doc->pt, doc->selection.start, doc->selection.length, rep, rep_len);
-    doc->is_modified = true;
+    search_type_t st = (search_type_t)gtk_combo_box_get_active(GTK_COMBO_BOX(sb->find_type_combo));
+    uint8_t *pat = NULL, *rep = NULL;
+    size_t pat_len = 0, rep_len = 0;
+    if (!search_parse_pattern(query, st, doc->endian, &pat, &pat_len)) return;
+    if (!search_parse_pattern(rep_text, st, doc->endian, &rep, &rep_len)) {
+        free(pat);
+        return;
+    }
+
+    bool is_current_match = false;
+    if (doc->selection.length == pat_len && pat_len > 0) {
+        uint8_t *cur_bytes = malloc(pat_len);
+        pt_read_bytes(doc->pt, doc->selection.start, cur_bytes, pat_len, NULL);
+        if (memcmp(cur_bytes, pat, pat_len) == 0) {
+            is_current_match = true;
+        }
+        free(cur_bytes);
+    }
+
+    if (is_current_match) {
+        search_replace(doc->pt, doc->selection.start, doc->selection.length, rep, rep_len);
+        doc->is_modified = true;
+        doc_set_cursor(doc, doc->selection.start + rep_len, doc->cursor_in_ascii);
+        doc_clear_selection(doc);
+        if (sb->find_status_lbl) {
+            gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl),
+                "<span color='#98c379'>Replaced 1 occurrence</span>");
+        }
+    }
+
+    free(pat);
     free(rep);
 
     // Find next
@@ -281,6 +422,10 @@ static void on_replace_all_click(GtkButton *btn, gpointer user_data) {
         !search_parse_pattern(rep_text, st, doc->endian, &rep, &rep_len)) {
         if (pat) free(pat);
         if (rep) free(rep);
+        if (sb->find_status_lbl) {
+            gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl),
+                "<span color='#e06c75'>Invalid pattern for Replace All</span>");
+        }
         return;
     }
 
@@ -299,7 +444,15 @@ static void on_replace_all_click(GtkButton *btn, gpointer user_data) {
         doc->is_modified = true;
         app_update_ui(app);
     }
+
+    if (sb->find_status_lbl) {
+        char stat[128];
+        snprintf(stat, sizeof(stat), "<span color='#98c379'>Replaced %zu occurrence%s</span>",
+                 count, count == 1 ? "" : "s");
+        gtk_label_set_markup(GTK_LABEL(sb->find_status_lbl), stat);
+    }
 }
+
 
 /* =========================================================================
  * History Panel Callbacks
@@ -704,10 +857,15 @@ Sidebars *sidebars_create(App *app) {
 
         gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Find:"), 0, 0, 1, 1);
         sb->find_entry = gtk_entry_new();
+        gtk_entry_set_placeholder_text(GTK_ENTRY(sb->find_entry), "Search query...");
+        g_signal_connect(sb->find_entry, "activate", G_CALLBACK(on_find_entry_activate), sb);
+        g_signal_connect(sb->find_entry, "key-press-event", G_CALLBACK(on_find_entry_key_press), sb);
         gtk_grid_attach(GTK_GRID(grid), sb->find_entry, 1, 0, 1, 1);
 
         gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Replace:"), 0, 1, 1, 1);
         sb->replace_entry = gtk_entry_new();
+        gtk_entry_set_placeholder_text(GTK_ENTRY(sb->replace_entry), "Replacement data...");
+        g_signal_connect(sb->replace_entry, "activate", G_CALLBACK(on_replace_entry_activate), sb);
         gtk_grid_attach(GTK_GRID(grid), sb->replace_entry, 1, 1, 1, 1);
 
         gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Type:"), 0, 2, 1, 1);
@@ -759,6 +917,11 @@ Sidebars *sidebars_create(App *app) {
         GtkWidget *btn_fa = gtk_button_new_with_label("Find All Occurrences");
         g_signal_connect(btn_fa, "clicked", G_CALLBACK(on_find_all), sb);
         gtk_box_pack_start(GTK_BOX(box), btn_fa, FALSE, FALSE, 0);
+
+        sb->find_status_lbl = gtk_label_new("");
+        gtk_label_set_xalign(GTK_LABEL(sb->find_status_lbl), 0.0f);
+        gtk_label_set_line_wrap(GTK_LABEL(sb->find_status_lbl), TRUE);
+        gtk_box_pack_start(GTK_BOX(box), sb->find_status_lbl, FALSE, FALSE, 2);
 
         // Results Tree
         sb->find_results_store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_UINT64);
@@ -1060,23 +1223,54 @@ bool sidebars_is_left_collapsed(Sidebars *sb) {
     return sb ? sb->left_collapsed : false;
 }
 
+void sidebars_ensure_right_expanded(Sidebars *sb, App *app) {
+    if (!sb || !app || !app->paned_h2) return;
+
+    if (sb->right_collapsed) {
+        sb->right_collapsed = false;
+        int alloc_w = gtk_widget_get_allocated_width(app->paned_h2);
+        if (alloc_w <= 100) {
+            alloc_w = 900;
+        }
+        int target_pos;
+        if (sb->right_saved_position > 100 && sb->right_saved_position < alloc_w - 150) {
+            target_pos = sb->right_saved_position;
+        } else {
+            target_pos = (alloc_w > 500) ? (alloc_w - 340) : (alloc_w * 2 / 3);
+        }
+        if (target_pos < 100) target_pos = 100;
+        gtk_paned_set_position(GTK_PANED(app->paned_h2), target_pos);
+    }
+}
+
 void sidebars_toggle_right_collapse(Sidebars *sb, App *app) {
     if (!sb || !app || !app->paned_h2) return;
 
     if (!sb->right_collapsed) {
         // Collapse to right
         int cur_pos = gtk_paned_get_position(GTK_PANED(app->paned_h2));
-        if (cur_pos > 50) sb->right_saved_position = cur_pos;
+        int alloc_w = gtk_widget_get_allocated_width(app->paned_h2);
+        if (cur_pos > 50 && cur_pos < alloc_w - 50) {
+            sb->right_saved_position = cur_pos;
+        }
         sb->right_collapsed = true;
         gtk_paned_set_position(GTK_PANED(app->paned_h2), 99999);
     } else {
         // Restore / Expand
-        sb->right_collapsed = false;
-        int target_pos = (sb->right_saved_position > 50) ? sb->right_saved_position : 700;
-        gtk_paned_set_position(GTK_PANED(app->paned_h2), target_pos);
+        sidebars_ensure_right_expanded(sb, app);
     }
 }
 
 bool sidebars_is_right_collapsed(Sidebars *sb) {
     return sb ? sb->right_collapsed : false;
+}
+
+void sidebars_find_next(Sidebars *sb, App *app) {
+    if (!sb || !app) return;
+    do_find(sb, app, SEARCH_DIR_FORWARD);
+}
+
+void sidebars_find_prev(Sidebars *sb, App *app) {
+    if (!sb || !app) return;
+    do_find(sb, app, SEARCH_DIR_BACKWARD);
 }

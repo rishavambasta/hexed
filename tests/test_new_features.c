@@ -756,6 +756,120 @@ static void test_intel_hex_open_modes(void) {
     printf("  [PASS] Intel-HEX converted binary vs raw mode verified!\n");
 }
 
+static void test_search_robustness_and_features(void) {
+    printf("Testing search robustness, flexible parsing, and chunked search...\n");
+
+    // 1. Test flexible hex pattern parsing
+    uint8_t *pat = NULL;
+    uint8_t *mask = NULL;
+    size_t pat_len = 0;
+
+    // Standard hex with spaces
+    assert(search_parse_pattern_ex("48 89 E5", SEARCH_TYPE_HEX, HXD_ENDIAN_LITTLE, &pat, &mask, &pat_len));
+    assert(pat_len == 3 && pat[0] == 0x48 && pat[1] == 0x89 && pat[2] == 0xE5);
+    free(pat);
+
+    // Hex with 0x prefixes and commas: "0x48, 0x89, 0xE5"
+    assert(search_parse_pattern_ex("0x48, 0x89, 0xE5", SEARCH_TYPE_HEX, HXD_ENDIAN_LITTLE, &pat, &mask, &pat_len));
+    assert(pat_len == 3 && pat[0] == 0x48 && pat[1] == 0x89 && pat[2] == 0xE5);
+    free(pat);
+
+    // Hex with hyphens: "48-89-e5"
+    assert(search_parse_pattern_ex("48-89-e5", SEARCH_TYPE_HEX, HXD_ENDIAN_LITTLE, &pat, &mask, &pat_len));
+    assert(pat_len == 3 && pat[0] == 0x48 && pat[1] == 0x89 && pat[2] == 0xE5);
+    free(pat);
+
+    // Hex with \x and $ prefixes: "\x48 $89"
+    assert(search_parse_pattern_ex("\\x48 $89", SEARCH_TYPE_HEX, HXD_ENDIAN_LITTLE, &pat, &mask, &pat_len));
+    assert(pat_len == 2 && pat[0] == 0x48 && pat[1] == 0x89);
+    free(pat);
+
+    // Hex with single digit: "A" -> 0x0A
+    assert(search_parse_pattern_ex("A", SEARCH_TYPE_HEX, HXD_ENDIAN_LITTLE, &pat, &mask, &pat_len));
+    assert(pat_len == 1 && pat[0] == 0x0A);
+    free(pat);
+
+    // 2. Test flexible wildcard parsing
+    assert(search_parse_pattern_ex("0x48 ?? 0xE5", SEARCH_TYPE_WILDCARD, HXD_ENDIAN_LITTLE, &pat, &mask, &pat_len));
+    assert(pat_len == 3 && pat[0] == 0x48 && pat[2] == 0xE5);
+    assert(mask[0] == 0xFF && mask[1] == 0x00 && mask[2] == 0xFF);
+    free(pat);
+    free(mask);
+
+    // 3. Test chunked search across boundary
+    // Create piece table with data spanning block boundaries (> 65536)
+    size_t data_sz = 140000;
+    uint8_t *big_data = malloc(data_sz);
+    memset(big_data, 0x55, data_sz);
+
+    // Place pattern crossing 65536 boundary (e.g. at 65534)
+    big_data[65534] = 0xDE;
+    big_data[65535] = 0xAD;
+    big_data[65536] = 0xBE;
+    big_data[65537] = 0xEF;
+
+    // Place second occurrence at 120000
+    big_data[120000] = 0xDE;
+    big_data[120001] = 0xAD;
+    big_data[120002] = 0xBE;
+    big_data[120003] = 0xEF;
+
+    piece_table_t *pt = pt_open_memory(big_data, data_sz);
+    assert(pt != NULL);
+
+    uint8_t needle[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    search_params_t sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.match_case = true;
+
+    // Forward search from 0 finds match crossing boundary at 65534
+    hxd_offset_t f1 = search_find(pt, 0, needle, 4, &sp);
+    assert(f1 == 65534);
+
+    // Forward search from f1 + 1 finds second match at 120000
+    hxd_offset_t f2 = search_find(pt, f1 + 1, needle, 4, &sp);
+    assert(f2 == 120000);
+
+    // Backward search from 130000 finds second match at 120000
+    sp.direction = SEARCH_DIR_BACKWARD;
+    hxd_offset_t b1 = search_find(pt, 130000, needle, 4, &sp);
+    assert(b1 == 120000);
+
+    // Backward search from 119999 finds first match crossing boundary at 65534
+    hxd_offset_t b2 = search_find(pt, 119999, needle, 4, &sp);
+    assert(b2 == 65534);
+
+    // Backward search from 65533 finds no match
+    hxd_offset_t b3 = search_find(pt, 65533, needle, 4, &sp);
+    assert(b3 == HXD_OFFSET_INVALID);
+
+    // Backward wrap-around test: searching backward from end wraps to b1
+    hxd_offset_t b_wrap = search_find(pt, data_sz - 1, needle, 4, &sp);
+    assert(b_wrap == 120000);
+
+    pt_free(pt);
+    free(big_data);
+
+    // 4. Case-insensitive chunked text search
+    const char *text = "The Quick BROWN Fox Jumps Over The LAZY Dog";
+    piece_table_t *pt_text = pt_open_memory((const uint8_t *)text, strlen(text));
+    assert(pt_text != NULL);
+
+    memset(&sp, 0, sizeof(sp));
+    sp.match_case = false;
+    uint8_t brown_lower[] = "brown";
+    hxd_offset_t f_brown = search_find(pt_text, 0, brown_lower, 5, &sp);
+    assert(f_brown == 10); // "BROWN" is at index 10
+
+    uint8_t lazy_mixed[] = "LaZy";
+    hxd_offset_t f_lazy = search_find(pt_text, 0, lazy_mixed, 4, &sp);
+    assert(f_lazy == 35); // "LAZY" is at index 35
+
+    pt_free(pt_text);
+
+    printf("  [PASS] Search robustness, flexible parsing, and chunked search verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -770,6 +884,7 @@ int main(void) {
     test_keyboard_shortcut_dispatch_logic();
     test_tab_context_close_logic();
     test_intel_hex_open_modes();
+    test_search_robustness_and_features();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

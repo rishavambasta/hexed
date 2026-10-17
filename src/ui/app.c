@@ -709,13 +709,62 @@ void app_toggle_mode(App *app) {
 }
 
 void app_show_find(App *app) {
+    if (!app || !app->sidebars) return;
+    sidebars_ensure_right_expanded(app->sidebars, app);
     gtk_notebook_set_current_page(GTK_NOTEBOOK(app->sidebars->right_notebook), 0);
+
+    document_t *doc = app_get_active_document(app);
+    if (doc) {
+        if (doc->selection.length > 0 && doc->selection.length <= 64) {
+            search_type_t st = (search_type_t)gtk_combo_box_get_active(GTK_COMBO_BOX(app->sidebars->find_type_combo));
+            uint8_t sel_buf[64];
+            pt_read_bytes(doc->pt, doc->selection.start, sel_buf, doc->selection.length, NULL);
+            if (st == SEARCH_TYPE_HEX) {
+                char hex_str[256] = {0};
+                for (size_t i = 0; i < doc->selection.length; i++) {
+                    char b[8];
+                    snprintf(b, sizeof(b), "%02x%s", sel_buf[i], (i + 1 < doc->selection.length) ? " " : "");
+                    strcat(hex_str, b);
+                }
+                gtk_entry_set_text(GTK_ENTRY(app->sidebars->find_entry), hex_str);
+            } else if (st == SEARCH_TYPE_ASCII) {
+                char asc_str[65] = {0};
+                memcpy(asc_str, sel_buf, doc->selection.length);
+                gtk_entry_set_text(GTK_ENTRY(app->sidebars->find_entry), asc_str);
+            }
+        }
+    }
+
     gtk_widget_grab_focus(app->sidebars->find_entry);
+    gtk_editable_select_region(GTK_EDITABLE(app->sidebars->find_entry), 0, -1);
 }
 
 void app_show_replace(App *app) {
+    if (!app || !app->sidebars) return;
+    sidebars_ensure_right_expanded(app->sidebars, app);
     gtk_notebook_set_current_page(GTK_NOTEBOOK(app->sidebars->right_notebook), 0);
     gtk_widget_grab_focus(app->sidebars->replace_entry);
+    gtk_editable_select_region(GTK_EDITABLE(app->sidebars->replace_entry), 0, -1);
+}
+
+void app_find_next(App *app) {
+    if (!app || !app->sidebars) return;
+    const char *q = gtk_entry_get_text(GTK_ENTRY(app->sidebars->find_entry));
+    if (!q || strlen(q) == 0 || app->sidebars->right_collapsed) {
+        app_show_find(app);
+        return;
+    }
+    sidebars_find_next(app->sidebars, app);
+}
+
+void app_find_prev(App *app) {
+    if (!app || !app->sidebars) return;
+    const char *q = gtk_entry_get_text(GTK_ENTRY(app->sidebars->find_entry));
+    if (!q || strlen(q) == 0 || app->sidebars->right_collapsed) {
+        app_show_find(app);
+        return;
+    }
+    sidebars_find_prev(app->sidebars, app);
 }
 
 void app_show_fill_dialog(App *app) { dialog_show_fill(app); }
@@ -1100,6 +1149,16 @@ static gboolean on_app_window_key_press(GtkWidget *widget, GdkEventKey *event, g
 
     GtkWidget *focused = gtk_window_get_focus(GTK_WINDOW(app->window));
     gboolean in_text_entry = (focused && (GTK_IS_ENTRY(focused) || GTK_IS_TEXT_VIEW(focused)));
+
+    // F3 / Shift+F3 for Find Next / Find Prev
+    if (keyval == GDK_KEY_F3 || event->keyval == GDK_KEY_F3) {
+        if (state & GDK_SHIFT_MASK) {
+            app_find_prev(app);
+        } else {
+            app_find_next(app);
+        }
+        return TRUE;
+    }
 
     // F7 / Shift+F7 for diff navigation if diff tab is open
     if (keyval == GDK_KEY_F7) {

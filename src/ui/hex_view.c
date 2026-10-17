@@ -1178,6 +1178,19 @@ static gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, gpointer use
     bool is_shift = (state & GDK_SHIFT_MASK) != 0;
 
     switch (event->keyval) {
+        case GDK_KEY_F3: {
+            App *app = get_app_from_view(view);
+            if (app) {
+                if (state & GDK_SHIFT_MASK) {
+                    app_find_prev(app);
+                } else {
+                    app_find_next(app);
+                }
+                return TRUE;
+            }
+            break;
+        }
+
         case GDK_KEY_Left: {
             hxd_offset_t prev_offset = doc->cursor_offset;
             if (!doc->cursor_in_ascii && doc->cursor_nibble == 1) {

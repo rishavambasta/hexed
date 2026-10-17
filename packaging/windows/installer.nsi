@@ -6,7 +6,7 @@ Target amd64-unicode
 SetCompressor /SOLID lzma
 
 !define PRODUCT_NAME "HexEd"
-!define PRODUCT_VERSION "1.4"
+!define PRODUCT_VERSION "1.5"
 !define PRODUCT_PUBLISHER "Rishav Ambasta"
 !define PRODUCT_WEB_SITE "https://github.com/rishavambasta/hexed"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\hexed.exe"

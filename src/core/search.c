@@ -53,6 +53,24 @@ bool search_parse_pattern_ex(const char *query, search_type_t type, hxd_endianne
                 while (*p && isspace((unsigned char)*p)) p++;
                 if (!*p) break;
 
+                // Skip delimiters and hex prefixes
+                if (*p == ',' || *p == ':' || *p == '-') {
+                    p++;
+                    continue;
+                }
+                if (*p == '0' && (*(p + 1) == 'x' || *(p + 1) == 'X')) {
+                    p += 2;
+                    continue;
+                }
+                if (*p == '\\' && (*(p + 1) == 'x' || *(p + 1) == 'X')) {
+                    p += 2;
+                    continue;
+                }
+                if (*p == '$') {
+                    p++;
+                    continue;
+                }
+
                 if (*p == '?') {
                     // Wildcard byte
                     pat[count] = 0x00;
@@ -65,8 +83,10 @@ bool search_parse_pattern_ex(const char *query, search_type_t type, hxd_endianne
                     int h2 = 0;
                     if (isxdigit((unsigned char)*p)) {
                         h2 = hex_val(*p++);
+                        pat[count] = (uint8_t)((h1 << 4) | h2);
+                    } else {
+                        pat[count] = (uint8_t)h1;
                     }
-                    pat[count] = (uint8_t)((h1 << 4) | h2);
                     mask[count] = 0xFF;
                     count++;
                 } else {
@@ -87,14 +107,39 @@ bool search_parse_pattern_ex(const char *query, search_type_t type, hxd_endianne
             return true;
         }
         case SEARCH_TYPE_HEX: {
-            // Strip whitespace and parse hex pairs
+            // Strip whitespace, delimiters, and hex prefixes, then parse hex pairs
             size_t qlen = strlen(query);
-            uint8_t *buf = malloc(qlen);
+            uint8_t *buf = malloc(qlen + 1);
             size_t b_idx = 0;
             int high_nibble = -1;
+            size_t i = 0;
 
-            for (size_t i = 0; i < qlen; i++) {
-                if (isspace((unsigned char)query[i])) continue;
+            while (i < qlen) {
+                if (isspace((unsigned char)query[i])) {
+                    i++;
+                    continue;
+                }
+                if (query[i] == ',' || query[i] == ':' || query[i] == '-') {
+                    if (high_nibble != -1) {
+                        buf[b_idx++] = (uint8_t)high_nibble;
+                        high_nibble = -1;
+                    }
+                    i++;
+                    continue;
+                }
+                if (query[i] == '0' && (query[i + 1] == 'x' || query[i + 1] == 'X')) {
+                    i += 2;
+                    continue;
+                }
+                if (query[i] == '\\' && (query[i + 1] == 'x' || query[i + 1] == 'X')) {
+                    i += 2;
+                    continue;
+                }
+                if (query[i] == '$') {
+                    i++;
+                    continue;
+                }
+
                 int v = hex_val(query[i]);
                 if (v < 0) {
                     free(buf);
@@ -106,9 +151,10 @@ bool search_parse_pattern_ex(const char *query, search_type_t type, hxd_endianne
                     buf[b_idx++] = (uint8_t)((high_nibble << 4) | v);
                     high_nibble = -1;
                 }
+                i++;
             }
-            if (high_nibble != -1) { // Odd number of hex characters, pad lowest
-                buf[b_idx++] = (uint8_t)(high_nibble << 4);
+            if (high_nibble != -1) {
+                buf[b_idx++] = (uint8_t)high_nibble;
             }
             if (b_idx == 0) {
                 free(buf);
@@ -266,38 +312,6 @@ bool search_parse_pattern_ex(const char *query, search_type_t type, hxd_endianne
     return false;
 }
 
-static bool match_at(const piece_table_t *pt, hxd_offset_t off, const uint8_t *pat, const uint8_t *mask, size_t pat_len, bool match_case) {
-    uint8_t buf[256];
-    size_t rem = pat_len;
-    hxd_offset_t curr_off = off;
-    size_t pat_off = 0;
-
-    while (rem > 0) {
-        size_t chunk = (rem < sizeof(buf)) ? rem : sizeof(buf);
-        hxd_size_t read_bytes = pt_read_bytes(pt, curr_off, buf, chunk, NULL);
-        if (read_bytes < chunk) return false;
-
-        for (size_t i = 0; i < chunk; i++) {
-            uint8_t b1 = buf[i];
-            uint8_t b2 = pat[pat_off + i];
-            uint8_t m  = mask ? mask[pat_off + i] : 0xFF;
-
-            if (m == 0x00) continue; // Wildcard matches any byte
-
-            if (!match_case) {
-                if (tolower((unsigned char)(b1 & m)) != tolower((unsigned char)(b2 & m))) return false;
-            } else {
-                if ((b1 & m) != (b2 & m)) return false;
-            }
-        }
-
-        rem -= chunk;
-        curr_off += chunk;
-        pat_off += chunk;
-    }
-    return true;
-}
-
 hxd_offset_t search_find_regex(const piece_table_t *pt, hxd_offset_t start_offset, const char *regex_str, bool backward, bool match_case, size_t *out_len) {
     if (!pt || !regex_str || strlen(regex_str) == 0) return HXD_OFFSET_INVALID;
     hxd_size_t doc_size = pt_get_size(pt);
@@ -436,23 +450,157 @@ hxd_offset_t search_find(const piece_table_t *pt, hxd_offset_t start_offset, con
     bool match_case = params ? params->match_case : true;
     const uint8_t *mask = params ? params->wildcard_mask : NULL;
 
+#define SEARCH_BLOCK_SIZE 65536
+
     if (!backward) {
         hxd_offset_t cur = (start_offset < range_start) ? range_start : start_offset;
+        uint8_t *block = malloc(SEARCH_BLOCK_SIZE + pattern_len);
+        if (!block) return HXD_OFFSET_INVALID;
+
+        hxd_offset_t result = HXD_OFFSET_INVALID;
+        uint8_t first_byte = pattern[0];
+        uint8_t first_lower = tolower((unsigned char)first_byte);
+        uint8_t first_upper = toupper((unsigned char)first_byte);
+
         while (cur + pattern_len <= range_end) {
-            if (match_at(pt, cur, pattern, mask, pattern_len, match_case)) {
-                return cur;
+            size_t to_read = SEARCH_BLOCK_SIZE;
+            if (cur + to_read > range_end) {
+                to_read = (size_t)(range_end - cur);
             }
-            cur++;
+            hxd_size_t bytes_read = pt_read_bytes(pt, cur, block, to_read, NULL);
+            if (bytes_read < pattern_len) break;
+
+            size_t in_block = 0;
+            size_t limit = bytes_read - pattern_len;
+
+            while (in_block <= limit) {
+                if (mask) {
+                    bool match = true;
+                    for (size_t i = 0; i < pattern_len; i++) {
+                        uint8_t m = mask[i];
+                        if (m == 0x00) continue;
+                        if (!match_case) {
+                            if (tolower((unsigned char)(block[in_block + i] & m)) !=
+                                tolower((unsigned char)(pattern[i] & m))) {
+                                match = false; break;
+                            }
+                        } else {
+                            if ((block[in_block + i] & m) != (pattern[i] & m)) {
+                                match = false; break;
+                            }
+                        }
+                    }
+                    if (match) {
+                        result = cur + in_block;
+                        break;
+                    }
+                    in_block++;
+                } else if (match_case) {
+                    const uint8_t *p = memchr(block + in_block, first_byte, limit - in_block + 1);
+                    if (!p) break;
+                    in_block = p - block;
+                    if (pattern_len == 1 || memcmp(block + in_block, pattern, pattern_len) == 0) {
+                        result = cur + in_block;
+                        break;
+                    }
+                    in_block++;
+                } else {
+                    uint8_t b = block[in_block];
+                    if (b == first_lower || b == first_upper) {
+                        bool match = true;
+                        for (size_t i = 1; i < pattern_len; i++) {
+                            if (tolower((unsigned char)block[in_block + i]) !=
+                                tolower((unsigned char)pattern[i])) {
+                                match = false; break;
+                            }
+                        }
+                        if (match) {
+                            result = cur + in_block;
+                            break;
+                        }
+                    }
+                    in_block++;
+                }
+            }
+
+            if (result != HXD_OFFSET_INVALID) break;
+            if (cur + bytes_read >= range_end) break;
+            cur += bytes_read - (pattern_len - 1);
         }
+
+        free(block);
+        return result;
     } else {
-        hxd_offset_t cur = (start_offset > range_end - pattern_len) ? (range_end - pattern_len) : start_offset;
+        hxd_offset_t max_start = range_end - pattern_len;
+        hxd_offset_t cur = (start_offset > max_start) ? max_start : start_offset;
+        uint8_t *block = malloc(SEARCH_BLOCK_SIZE + pattern_len);
+        if (!block) return HXD_OFFSET_INVALID;
+
+        hxd_offset_t result = HXD_OFFSET_INVALID;
+        uint8_t first_byte = pattern[0];
+        uint8_t first_lower = tolower((unsigned char)first_byte);
+
         while (cur >= range_start) {
-            if (match_at(pt, cur, pattern, mask, pattern_len, match_case)) {
-                return cur;
+            hxd_offset_t block_start = (cur >= SEARCH_BLOCK_SIZE) ? (cur - SEARCH_BLOCK_SIZE + 1) : 0;
+            if (block_start < range_start) block_start = range_start;
+
+            size_t to_read = (size_t)(cur + pattern_len - block_start);
+            hxd_size_t bytes_read = pt_read_bytes(pt, block_start, block, to_read, NULL);
+            if (bytes_read < pattern_len) break;
+
+            int64_t in_block = (int64_t)(cur - block_start);
+            while (in_block >= 0) {
+                if ((size_t)in_block + pattern_len <= bytes_read) {
+                    bool match = true;
+                    if (mask) {
+                        for (size_t i = 0; i < pattern_len; i++) {
+                            uint8_t m = mask[i];
+                            if (m == 0x00) continue;
+                            if (!match_case) {
+                                if (tolower((unsigned char)(block[in_block + i] & m)) !=
+                                    tolower((unsigned char)(pattern[i] & m))) {
+                                    match = false; break;
+                                }
+                            } else {
+                                if ((block[in_block + i] & m) != (pattern[i] & m)) {
+                                    match = false; break;
+                                }
+                            }
+                        }
+                    } else if (match_case) {
+                        if (block[in_block] != first_byte ||
+                            (pattern_len > 1 && memcmp(block + in_block, pattern, pattern_len) != 0)) {
+                            match = false;
+                        }
+                    } else {
+                        if (tolower((unsigned char)block[in_block]) != first_lower) {
+                            match = false;
+                        } else {
+                            for (size_t i = 1; i < pattern_len; i++) {
+                                if (tolower((unsigned char)block[in_block + i]) !=
+                                    tolower((unsigned char)pattern[i])) {
+                                    match = false; break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (match) {
+                        result = block_start + in_block;
+                        break;
+                    }
+                }
+                in_block--;
             }
-            if (cur == 0) break;
-            cur--;
+
+            if (result != HXD_OFFSET_INVALID) break;
+            if (block_start <= range_start) break;
+            if (block_start + pattern_len < 2) break;
+            cur = block_start + pattern_len - 2;
         }
+
+        free(block);
+        return result;
     }
 
     return HXD_OFFSET_INVALID;

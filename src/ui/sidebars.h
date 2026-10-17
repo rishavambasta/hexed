@@ -40,6 +40,7 @@ typedef struct _Sidebars {
     GtkWidget *find_type_combo;
     GtkWidget *find_chk_case;
     GtkWidget *find_chk_selection;
+    GtkWidget *find_status_lbl;
     GtkWidget *find_results_list;
     GtkListStore *find_results_store;
 
@@ -75,6 +76,9 @@ void      sidebars_set_base_converter_visible(Sidebars *sb, App *app, bool visib
 void      sidebars_toggle_left_collapse(Sidebars *sb, App *app);
 bool      sidebars_is_left_collapsed(Sidebars *sb);
 void      sidebars_toggle_right_collapse(Sidebars *sb, App *app);
+void      sidebars_ensure_right_expanded(Sidebars *sb, App *app);
 bool      sidebars_is_right_collapsed(Sidebars *sb);
+void      sidebars_find_next(Sidebars *sb, App *app);
+void      sidebars_find_prev(Sidebars *sb, App *app);
 
 #endif // HXD_SIDEBARS_H
