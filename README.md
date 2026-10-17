@@ -1,4 +1,4 @@
-# HexEd (v1.2)
+# HexEd (v1.3)
 
 **Author:** Rishav Ambasta
 
