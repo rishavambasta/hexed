@@ -42,7 +42,14 @@ bool ihex_is_intel_hex(const char *path_or_content, bool is_path) {
 
     const char *p = first_chars;
     while (*p && isspace((unsigned char)*p)) p++;
-    return (*p == ':');
+    if (*p != ':') return false;
+    p++;
+    int hex_digits = 0;
+    while (*p && isxdigit((unsigned char)*p) && hex_digits < 10) {
+        p++;
+        hex_digits++;
+    }
+    return (hex_digits >= 10);
 }
 
 piece_table_t *ihex_parse_string(const char *content) {

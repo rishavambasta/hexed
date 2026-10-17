@@ -5,6 +5,7 @@
 #include "dialogs.h"
 #include "theme.h"
 #include "../core/search.h"
+#include "../core/intel_hex.h"
 #include "../version.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -403,7 +404,17 @@ void app_new_document(App *app) {
 
 void app_open_document(App *app, const char *path) {
     if (!path) return;
-    document_t *doc = doc_open_file(path);
+
+    bool convert_ihex = true;
+    if (ihex_is_intel_hex(path, true)) {
+        int choice = dialog_prompt_ihex_mode(app, path);
+        if (choice == 0) {
+            return; // Cancelled
+        }
+        convert_ihex = (choice == 1);
+    }
+
+    document_t *doc = doc_open_file_ex(path, convert_ihex);
     if (doc) {
         add_document_tab(app, doc);
     }
@@ -1252,13 +1263,14 @@ void app_show_controls_dialog(App *app) { dialog_show_controls(app); }
 void app_show_about_dialog(App *app) { dialog_show_about(app); }
 
 void app_run(App *app, int argc, char **argv) {
+    gtk_widget_show_all(app->window);
+
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] != '-') {
             app_open_document(app, argv[i]);
         }
     }
 
-    gtk_widget_show_all(app->window);
     if (app->active_view && app->active_view->drawing_area) {
         gtk_widget_grab_focus(app->active_view->drawing_area);
     }

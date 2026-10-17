@@ -1738,3 +1738,75 @@ void dialog_show_about(App *app) {
     gtk_dialog_run(GTK_DIALOG(dlg));
     gtk_widget_destroy(dlg);
 }
+
+int dialog_prompt_ihex_mode(App *app, const char *path) {
+    if (!path) return 0;
+
+    GtkWidget *dlg = gtk_dialog_new_with_buttons(
+        "Open Intel-HEX File",
+        (app && app->window) ? GTK_WINDOW(app->window) : NULL,
+        GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT,
+        "_Cancel", GTK_RESPONSE_CANCEL,
+        "Raw Intel-HEX", 2,
+        "Converted Binary", 1,
+        NULL
+    );
+
+    gtk_dialog_set_default_response(GTK_DIALOG(dlg), 1);
+
+    GtkWidget *btn_bin = gtk_dialog_get_widget_for_response(GTK_DIALOG(dlg), 1);
+    if (btn_bin) {
+        gtk_style_context_add_class(gtk_widget_get_style_context(btn_bin), "suggested-action");
+    }
+
+    GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
+    gtk_container_set_border_width(GTK_CONTAINER(content), 16);
+
+    GtkWidget *hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 16);
+    gtk_box_pack_start(GTK_BOX(content), hbox, TRUE, TRUE, 0);
+
+    GtkWidget *icon = gtk_image_new_from_icon_name("dialog-question", GTK_ICON_SIZE_DIALOG);
+    gtk_widget_set_valign(icon, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(hbox), icon, FALSE, FALSE, 0);
+
+    GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_box_pack_start(GTK_BOX(hbox), vbox, TRUE, TRUE, 0);
+
+    const char *basename = strrchr(path, '/');
+#ifdef _WIN32
+    const char *bslash = strrchr(path, '\\');
+    if (bslash && (!basename || bslash > basename)) basename = bslash;
+#endif
+    basename = basename ? basename + 1 : path;
+
+    gchar *escaped_name = g_markup_escape_text(basename, -1);
+    char title_markup[512];
+    snprintf(title_markup, sizeof(title_markup),
+             "<span size='large' weight='bold'>Intel-HEX File Detected</span>\n"
+             "<span size='small' color='#888888'>%s</span>", escaped_name);
+    g_free(escaped_name);
+
+    GtkWidget *lbl_title = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(lbl_title), title_markup);
+    gtk_widget_set_halign(lbl_title, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(vbox), lbl_title, FALSE, FALSE, 0);
+
+    GtkWidget *lbl_desc = gtk_label_new(NULL);
+    gtk_label_set_markup(GTK_LABEL(lbl_desc),
+        "This file appears to be in <b>Intel HEX</b> format.\n\n"
+        "How would you like to open it?\n\n"
+        "• <b>Converted Binary</b>: Decodes record addresses and loads the binary data.\n"
+        "• <b>Raw Intel-HEX</b>: Opens the literal text records and checksums as raw bytes."
+    );
+    gtk_label_set_line_wrap(GTK_LABEL(lbl_desc), TRUE);
+    gtk_widget_set_halign(lbl_desc, GTK_ALIGN_START);
+    gtk_box_pack_start(GTK_BOX(vbox), lbl_desc, FALSE, FALSE, 4);
+
+    gtk_widget_show_all(dlg);
+    gint res = gtk_dialog_run(GTK_DIALOG(dlg));
+    gtk_widget_destroy(dlg);
+
+    if (res == 1) return 1; // Converted Binary
+    if (res == 2) return 2; // Raw Intel-HEX
+    return 0; // Cancel
+}

@@ -18,5 +18,6 @@ void dialog_show_diff(App *app);
 void dialog_show_settings(App *app);
 void dialog_show_controls(App *app);
 void dialog_show_about(App *app);
+int  dialog_prompt_ihex_mode(App *app, const char *path);
 
 #endif // HXD_DIALOGS_H

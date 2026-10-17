@@ -32,10 +32,12 @@ typedef struct {
     bookmark_t       *bookmarks;
     size_t            bookmark_count;
     size_t            bookmark_capacity;
+    bool              is_raw_hex_format;
 } document_t;
 
 document_t *doc_create_new(void);
 document_t *doc_open_file(const char *path);
+document_t *doc_open_file_ex(const char *path, bool convert_ihex);
 bool        doc_save(document_t *doc);
 bool        doc_save_as(document_t *doc, const char *new_path);
 void        doc_free(document_t *doc);

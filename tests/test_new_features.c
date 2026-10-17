@@ -703,6 +703,59 @@ static void test_tab_context_close_logic(void) {
     printf("  [PASS] Tab context menu 'Close all' and 'Close all but this' verified!\n");
 }
 
+static void test_intel_hex_open_modes(void) {
+    printf("Testing Intel-HEX opening modes (converted binary vs raw)...\n");
+
+    const char *hex_path = "/tmp/test_sample_mode.hex";
+    FILE *f = fopen(hex_path, "w");
+    assert(f != NULL);
+    fputs(":04000000AABBCCDDEE\r\n:00000001FF\r\n", f);
+    fclose(f);
+
+    assert(ihex_is_intel_hex(hex_path, true) == true);
+
+    // 1. Open as Converted Binary (convert_ihex = true)
+    document_t *doc_bin = doc_open_file_ex(hex_path, true);
+    assert(doc_bin != NULL);
+    assert(doc_bin->is_raw_hex_format == false);
+    assert(pt_get_size(doc_bin->pt) == 4);
+    uint8_t b[4];
+    pt_read_bytes(doc_bin->pt, 0, b, 4, NULL);
+    assert(b[0] == 0xAA && b[1] == 0xBB && b[2] == 0xCC && b[3] == 0xDD);
+    doc_free(doc_bin);
+
+    // 2. Open as Raw Intel-HEX (convert_ihex = false)
+    document_t *doc_raw = doc_open_file_ex(hex_path, false);
+    assert(doc_raw != NULL);
+    assert(doc_raw->is_raw_hex_format == true);
+    hxd_size_t raw_sz = pt_get_size(doc_raw->pt);
+    assert(raw_sz > 4); // Full ASCII records length
+    uint8_t first_char = 0;
+    pt_read_bytes(doc_raw->pt, 0, &first_char, 1, NULL);
+    assert(first_char == ':'); // Starts with literal ':'
+
+    // 3. Test saving raw Intel-HEX document preserves raw records
+    const char *saved_raw_path = "/tmp/test_sample_saved_raw.hex";
+    bool save_ok = doc_save_as(doc_raw, saved_raw_path);
+    assert(save_ok == true);
+    doc_free(doc_raw);
+
+    // Verify saved file contains ':' record header
+    FILE *f_check = fopen(saved_raw_path, "r");
+    assert(f_check != NULL);
+    char buf[64];
+    char *res = fgets(buf, sizeof(buf), f_check);
+    assert(res != NULL);
+    assert(buf[0] == ':');
+    assert(strstr(buf, "AABBCCDD") != NULL);
+    fclose(f_check);
+
+    remove(hex_path);
+    remove(saved_raw_path);
+
+    printf("  [PASS] Intel-HEX converted binary vs raw mode verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -716,6 +769,7 @@ int main(void) {
     test_selection_polygon_geometry_and_performance();
     test_keyboard_shortcut_dispatch_logic();
     test_tab_context_close_logic();
+    test_intel_hex_open_modes();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

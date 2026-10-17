@@ -33,7 +33,7 @@ document_t *doc_create_new(void) {
     return doc;
 }
 
-document_t *doc_open_file(const char *path) {
+document_t *doc_open_file_ex(const char *path, bool convert_ihex) {
     if (!path) return NULL;
 
     document_t *doc = calloc(1, sizeof(document_t));
@@ -49,11 +49,19 @@ document_t *doc_open_file(const char *path) {
 
     // Check format: Intel HEX, SREC, or Binary
     if (ihex_is_intel_hex(path, true)) {
-        doc->pt = ihex_parse_file(path);
+        if (convert_ihex) {
+            doc->pt = ihex_parse_file(path);
+            doc->is_raw_hex_format = false;
+        } else {
+            doc->pt = pt_open_file(path);
+            doc->is_raw_hex_format = true;
+        }
     } else if (srec_is_srec(path, true)) {
         doc->pt = srec_parse_file(path);
+        doc->is_raw_hex_format = false;
     } else {
         doc->pt = pt_open_file(path);
+        doc->is_raw_hex_format = false;
     }
 
     doc->history = history_create();
@@ -66,6 +74,10 @@ document_t *doc_open_file(const char *path) {
     doc->saved_history_index = doc->history->current_index;
     doc->history->saved_index = doc->saved_history_index;
     return doc;
+}
+
+document_t *doc_open_file(const char *path) {
+    return doc_open_file_ex(path, true);
 }
 
 bool doc_save(document_t *doc) {
@@ -81,9 +93,9 @@ bool doc_save_as(document_t *doc, const char *new_path) {
     bool ok = false;
     hxd_range_t full = {0, 0};
 
-    if (ext && (strcasecmp(ext, ".hex") == 0 || strcasecmp(ext, ".ihex") == 0)) {
+    if (!doc->is_raw_hex_format && ext && (strcasecmp(ext, ".hex") == 0 || strcasecmp(ext, ".ihex") == 0)) {
         ok = ihex_export_file(doc->pt, new_path, full, IHEX_FMT_I32HEX, doc->bytes_per_row);
-    } else if (ext && (strcasecmp(ext, ".srec") == 0 || strcasecmp(ext, ".s19") == 0 || strcasecmp(ext, ".s28") == 0 || strcasecmp(ext, ".s37") == 0)) {
+    } else if (!doc->is_raw_hex_format && ext && (strcasecmp(ext, ".srec") == 0 || strcasecmp(ext, ".s19") == 0 || strcasecmp(ext, ".s28") == 0 || strcasecmp(ext, ".s37") == 0)) {
         ok = srec_export_file(doc->pt, new_path, full, SREC_FMT_S19, "HXD", doc->bytes_per_row);
     } else {
         ok = pt_save_file(doc->pt, new_path);
