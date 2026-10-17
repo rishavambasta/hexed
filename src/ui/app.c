@@ -122,7 +122,7 @@ static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *
 
     GtkWidget *new_nb = gtk_notebook_new();
     gtk_notebook_set_scrollable(GTK_NOTEBOOK(new_nb), TRUE);
-    gtk_notebook_set_group_name(GTK_NOTEBOOK(new_nb), "hxd-notebook-group");
+    gtk_notebook_set_group_name(GTK_NOTEBOOK(new_nb), "hexed-notebook-group");
     g_signal_connect(new_nb, "create-window", G_CALLBACK(on_notebook_create_window), app);
 
     gtk_box_pack_start(GTK_BOX(vbox), new_nb, TRUE, TRUE, 0);
@@ -230,7 +230,7 @@ App *app_create(void) {
     // Document Notebook
     app->doc_notebook = gtk_notebook_new();
     gtk_notebook_set_scrollable(GTK_NOTEBOOK(app->doc_notebook), TRUE);
-    gtk_notebook_set_group_name(GTK_NOTEBOOK(app->doc_notebook), "hxd-notebook-group");
+    gtk_notebook_set_group_name(GTK_NOTEBOOK(app->doc_notebook), "hexed-notebook-group");
     g_signal_connect(app->doc_notebook, "create-window", G_CALLBACK(on_notebook_create_window), app);
     g_signal_connect(app->doc_notebook, "switch-page", G_CALLBACK(on_tab_switch), app);
 

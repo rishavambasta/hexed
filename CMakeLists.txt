@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(hxd C)
+project(hexed C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -20,16 +20,17 @@ add_definitions(${GTK3_CFLAGS_OTHER})
 file(GLOB_RECURSE CORE_SRCS "src/core/*.c")
 file(GLOB_RECURSE UI_SRCS "src/ui/*.c")
 
-add_executable(hxd
+add_executable(hexed
     src/main.c
     ${CORE_SRCS}
     ${UI_SRCS}
 )
 
-target_link_libraries(hxd
+target_link_libraries(hexed
     ${GTK3_LIBRARIES}
     m
 )
+
 
 # Tests
 enable_testing()

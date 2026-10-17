@@ -17,19 +17,19 @@ CORE_OBJS = $(patsubst $(COREDIR)/%.c,$(BUILDDIR)/core/%.o,$(CORE_SRCS))
 UI_OBJS = $(patsubst $(UIDIR)/%.c,$(BUILDDIR)/ui/%.o,$(UI_SRCS))
 MAIN_OBJ = $(BUILDDIR)/main.o
 
-TARGET = $(BINDIR)/hxd
-ALIAS = $(BINDIR)/hexed
+TARGET = $(BINDIR)/hexed
+ALIAS = $(BINDIR)/hxd
 
 .PHONY: all clean test appimage-x86_64 appimage-aarch64 win64-installer package-all
 
 all: $(TARGET) $(ALIAS)
 
-
 $(TARGET): $(CORE_OBJS) $(UI_OBJS) $(MAIN_OBJ) | $(BINDIR)
 	$(CC) $^ $(GTK_LIBS) -o $@
 
 $(ALIAS): $(TARGET)
-	ln -sf hxd $(ALIAS)
+	ln -sf hexed $(ALIAS)
+
 
 $(BUILDDIR)/core/%.o: $(COREDIR)/%.c | $(BUILDDIR)/core
 	$(CC) $(CFLAGS) $(GTK_CFLAGS) -c $< -o $@
