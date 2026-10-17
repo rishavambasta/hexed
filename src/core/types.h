@@ -28,8 +28,8 @@ typedef enum {
 } hxd_theme_t;
 
 typedef enum {
-    HXD_HEX_UPPERCASE = 0,
-    HXD_HEX_LOWERCASE = 1
+    HXD_HEX_LOWERCASE = 0,
+    HXD_HEX_UPPERCASE = 1
 } hxd_hex_case_t;
 
 typedef enum {

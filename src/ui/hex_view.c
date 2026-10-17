@@ -1337,7 +1337,7 @@ HexView *hex_view_create(document_t *doc) {
     view->font_size_pt = 10;
     view->column_interlacing = true;
     view->cross_highlighting = true;
-    view->hex_case = HXD_HEX_UPPERCASE;
+    view->hex_case = HXD_HEX_LOWERCASE;
 
     view->container = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 

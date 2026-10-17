@@ -593,9 +593,25 @@ static void on_goto_entry_changed(GtkEditable *editable, gpointer user_data) {
     goto_dialog_update_preview((goto_dialog_state_t *)user_data);
 }
 
+static int s_last_goto_mode = 0; // 0 = Absolute, 1 = Relative, 2 = End of file
+static bool s_last_goto_dec = false;
+
 static void on_goto_radio_toggled(GtkToggleButton *btn, gpointer user_data) {
     (void)btn;
-    goto_dialog_update_preview((goto_dialog_state_t *)user_data);
+    goto_dialog_state_t *st = (goto_dialog_state_t *)user_data;
+    if (st) {
+        if (st->radio_rel && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_rel))) {
+            s_last_goto_mode = 1;
+        } else if (st->radio_end && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_end))) {
+            s_last_goto_mode = 2;
+        } else if (st->radio_abs && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_abs))) {
+            s_last_goto_mode = 0;
+        }
+        if (st->radio_dec) {
+            s_last_goto_dec = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st->radio_dec));
+        }
+    }
+    goto_dialog_update_preview(st);
 }
 
 void dialog_show_goto(App *app) {
@@ -631,8 +647,15 @@ void dialog_show_goto(App *app) {
     gtk_box_pack_start(GTK_BOX(hb_entry), gtk_label_new("Address / Offset:"), FALSE, FALSE, 0);
     st.entry_offset = gtk_entry_new();
     char cur_str[32];
-    snprintf(cur_str, sizeof(cur_str), "0x%llX", (unsigned long long)st.cursor_offset);
+    if (s_last_goto_mode == 1) {
+        snprintf(cur_str, sizeof(cur_str), "0");
+    } else {
+        snprintf(cur_str, sizeof(cur_str),
+                 app->hex_case == HXD_HEX_LOWERCASE ? "0x%llx" : "0x%llX",
+                 (unsigned long long)st.cursor_offset);
+    }
     gtk_entry_set_text(GTK_ENTRY(st.entry_offset), cur_str);
+    gtk_editable_select_region(GTK_EDITABLE(st.entry_offset), 0, -1);
     gtk_entry_set_activates_default(GTK_ENTRY(st.entry_offset), TRUE);
     g_signal_connect(st.entry_offset, "changed", G_CALLBACK(on_goto_entry_changed), &st);
     gtk_box_pack_start(GTK_BOX(hb_entry), st.entry_offset, TRUE, TRUE, 0);
@@ -642,7 +665,11 @@ void dialog_show_goto(App *app) {
     GtkWidget *hb_base = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
     st.radio_hex = gtk_radio_button_new_with_label(NULL, "Hexadecimal (0x / h)");
     st.radio_dec = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_hex), "Decimal");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_hex), TRUE);
+    if (s_last_goto_dec) {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_dec), TRUE);
+    } else {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_hex), TRUE);
+    }
     g_signal_connect(st.radio_hex, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
     g_signal_connect(st.radio_dec, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
     gtk_box_pack_start(GTK_BOX(hb_base), st.radio_hex, FALSE, FALSE, 0);
@@ -658,6 +685,15 @@ void dialog_show_goto(App *app) {
     st.radio_abs = gtk_radio_button_new_with_label(NULL, "Beginning of file (Absolute)");
     st.radio_rel = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_abs), "Current position (Relative +/-)");
     st.radio_end = gtk_radio_button_new_with_label_from_widget(GTK_RADIO_BUTTON(st.radio_abs), "End of file (Backwards -)");
+
+    if (s_last_goto_mode == 1) {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_rel), TRUE);
+    } else if (s_last_goto_mode == 2) {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_end), TRUE);
+    } else {
+        gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(st.radio_abs), TRUE);
+    }
+
     g_signal_connect(st.radio_abs, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
     g_signal_connect(st.radio_rel, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
     g_signal_connect(st.radio_end, "toggled", G_CALLBACK(on_goto_radio_toggled), &st);
@@ -678,6 +714,8 @@ void dialog_show_goto(App *app) {
     if (gtk_dialog_run(GTK_DIALOG(st.dlg)) == GTK_RESPONSE_OK) {
         const char *text = gtk_entry_get_text(GTK_ENTRY(st.entry_offset));
         bool is_dec = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_dec));
+        s_last_goto_dec = is_dec;
+
         uint64_t raw_val = 0;
         if (text && strlen(text) > 0) {
             if (is_dec) raw_val = strtoull(text, NULL, 10);
@@ -687,6 +725,7 @@ void dialog_show_goto(App *app) {
         int mode = 0;
         if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_rel))) mode = 1;
         else if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(st.radio_end))) mode = 2;
+        s_last_goto_mode = mode;
 
         int64_t target = 0;
         if (mode == 0) target = (int64_t)raw_val;
@@ -1608,8 +1647,8 @@ void dialog_show_settings(App *app) {
 
     // Hex case
     GtkWidget *combo_case = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_case), "Uppercase (A-F)");
     gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_case), "Lowercase (a-f)");
+    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(combo_case), "Uppercase (A-F)");
     gtk_combo_box_set_active(GTK_COMBO_BOX(combo_case), app->hex_case);
 
     // Bytes per row

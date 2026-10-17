@@ -194,7 +194,7 @@ App *app_create(void) {
     app->theme = HXD_THEME_DARK;
     app->column_interlacing = true;
     app->cross_highlighting = true;
-    app->hex_case = HXD_HEX_UPPERCASE;
+    app->hex_case = HXD_HEX_LOWERCASE;
     app->bytes_per_row = 16;
 
     theme_init();
