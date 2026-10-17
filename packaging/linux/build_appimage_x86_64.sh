@@ -52,10 +52,12 @@ else
 fi
 
 echo "=== Packaging x86_64 AppImage ==="
-OUTPUT_APPIMAGE="$DISTDIR/HexEd-1.1-x86_64.AppImage"
+VERSION=$(grep -E 'HEXED_VERSION\s+' "$PROJECT_ROOT/src/version.h" | awk -F'"' '{print $2}')
+OUTPUT_APPIMAGE="$DISTDIR/HexEd-${VERSION}-x86_64.AppImage"
 rm -f "$OUTPUT_APPIMAGE"
 
 ARCH=x86_64 "$APPIMAGETOOL" "$APPDIR" "$OUTPUT_APPIMAGE"
+
 
 chmod +x "$OUTPUT_APPIMAGE"
 rm -rf "$APPDIR"

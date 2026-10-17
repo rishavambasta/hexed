@@ -46,5 +46,7 @@ cd "$PROJECT_ROOT/packaging/windows"
 "$MAKENSIS" installer.nsi
 cd "$PROJECT_ROOT"
 
-echo "Successfully built: dist/HexEd-1.1-Setup-win64.exe"
-ls -lh dist/HexEd-1.1-Setup-win64.exe
+VERSION=$(grep -E 'HEXED_VERSION\s+' "$PROJECT_ROOT/src/version.h" | awk -F'"' '{print $2}')
+echo "Successfully built: dist/HexEd-${VERSION}-Setup-win64.exe"
+ls -lh "dist/HexEd-${VERSION}-Setup-win64.exe"
+

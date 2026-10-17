@@ -5,7 +5,7 @@ Unicode true
 Target amd64-unicode
 
 !define PRODUCT_NAME "HexEd"
-!define PRODUCT_VERSION "1.1"
+!define PRODUCT_VERSION "1.2"
 !define PRODUCT_PUBLISHER "Rishav Ambasta"
 !define PRODUCT_WEB_SITE "https://github.com/rishavambasta/hexed"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\hexed.exe"
@@ -13,7 +13,8 @@ Target amd64-unicode
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 
 Name "${PRODUCT_NAME} v${PRODUCT_VERSION}"
-OutFile "..\..\dist\HexEd-1.1-Setup-win64.exe"
+OutFile "..\..\dist\HexEd-${PRODUCT_VERSION}-Setup-win64.exe"
+
 InstallDir "$PROGRAMFILES64\HexEd"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show

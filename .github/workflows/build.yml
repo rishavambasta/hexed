@@ -35,8 +35,8 @@ jobs:
       - name: Upload x86_64 AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HexEd-1.1-x86_64.AppImage
-          path: dist/HexEd-1.1-x86_64.AppImage
+          name: HexEd-x86_64.AppImage
+          path: dist/HexEd-*-x86_64.AppImage
           if-no-files-found: error
 
   build-linux-aarch64:
@@ -58,8 +58,8 @@ jobs:
       - name: Upload aarch64 AppImage Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HexEd-1.1-aarch64.AppImage
-          path: dist/HexEd-1.1-aarch64.AppImage
+          name: HexEd-aarch64.AppImage
+          path: dist/HexEd-*-aarch64.AppImage
           if-no-files-found: error
 
   build-windows-x64:
@@ -81,8 +81,8 @@ jobs:
       - name: Upload Windows Installer Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HexEd-1.1-Setup-win64.exe
-          path: dist/HexEd-1.1-Setup-win64.exe
+          name: HexEd-Setup-win64.exe
+          path: dist/HexEd-*-Setup-win64.exe
           if-no-files-found: error
 
   release:
@@ -114,8 +114,8 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            dist/HexEd-1.1-x86_64.AppImage
-            dist/HexEd-1.1-aarch64.AppImage
-            dist/HexEd-1.1-Setup-win64.exe
+            dist/HexEd-*.AppImage
+            dist/HexEd-*.exe
             dist/SHA256SUMS.txt
           generate_release_notes: true
+

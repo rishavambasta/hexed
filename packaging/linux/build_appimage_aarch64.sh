@@ -76,10 +76,12 @@ fi
 RUNTIME_ARG="--runtime-file $PROJECT_ROOT/tools/runtime-aarch64"
 
 echo "=== Packaging aarch64 AppImage ==="
-OUTPUT_APPIMAGE="$DISTDIR/HexEd-1.1-aarch64.AppImage"
+VERSION=$(grep -E 'HEXED_VERSION\s+' "$PROJECT_ROOT/src/version.h" | awk -F'"' '{print $2}')
+OUTPUT_APPIMAGE="$DISTDIR/HexEd-${VERSION}-aarch64.AppImage"
 rm -f "$OUTPUT_APPIMAGE"
 
 ARCH=arm_aarch64 "$APPIMAGETOOL" $RUNTIME_ARG "$APPDIR" "$OUTPUT_APPIMAGE"
+
 
 chmod +x "$OUTPUT_APPIMAGE"
 rm -rf "$APPDIR"
