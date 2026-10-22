@@ -19,6 +19,9 @@ tests/test_*
 *.swp
 *~
 
+# Documentation (local reference)
+doc/
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -30,9 +30,11 @@ static void update_metrics(HexView *view) {
     int bpr = view->doc ? view->doc->bytes_per_row : 16;
     if (bpr <= 0) bpr = 16;
 
-    // Offset column: e.g. "00000000: " (10 chars)
+    // Offset column: fits exact hex address text width (8 chars, or 16 chars for >4GB) without colon
+    hxd_size_t doc_sz = (view->doc && view->doc->pt) ? pt_get_size(view->doc->pt) : 0;
+    int addr_chars = (doc_sz > 0xFFFFFFFFULL) ? 16 : 8;
     view->offset_col_x = 0;
-    view->offset_col_w = 11 * view->char_width + 8;
+    view->offset_col_w = addr_chars * view->char_width + 12;
 
     // Hex column: each byte is 2 chars + 1 space = 3 chars, plus extra space in middle
     view->hex_col_x = view->offset_col_w;
@@ -304,8 +306,8 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
 
     // Draw Header text
     cairo_set_source_rgb(cr, tc->header_text_r, tc->header_text_g, tc->header_text_b);
-    pango_layout_set_text(layout, "Offset(h)", -1);
-    cairo_move_to(cr, 8, 2);
+    pango_layout_set_text(layout, "Offset", -1);
+    cairo_move_to(cr, 6, 2);
     pango_cairo_show_layout(cr, layout);
 
     for (int col = 0; col < bpr; col++) {
@@ -346,12 +348,16 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     hxd_offset_t cur_row = view->doc->cursor_offset / bpr;
     int cur_col = (int)(view->doc->cursor_offset % bpr);
 
-    // Column Interlacing
+    // Column Interlacing: high-contrast alternate columns for both hex and decoded text
     if (view->column_interlacing) {
         cairo_set_source_rgb(cr, tc->odd_col_bg_r, tc->odd_col_bg_g, tc->odd_col_bg_b);
         for (int col = 1; col < bpr; col += 2) {
             int cx = view->hex_col_x + col * (3 * view->char_width) + (col >= 8 ? view->char_width : 0) + 2;
             cairo_rectangle(cr, cx, view->header_height, 2 * view->char_width + 4, alloc.height - view->header_height);
+            cairo_fill(cr);
+
+            int ax = view->ascii_col_x + col * view->char_width + 4;
+            cairo_rectangle(cr, ax, view->header_height, view->char_width, alloc.height - view->header_height);
             cairo_fill(cr);
         }
     }
@@ -382,19 +388,31 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
 
         int y = view->header_height + l * view->line_height;
 
-        // Draw offset string
+        // Draw offset string without colon, fitted to text width
         char offset_str[32];
-        snprintf(offset_str, sizeof(offset_str), "%08llX:", (unsigned long long)line_offset);
+        if (doc_size > 0xFFFFFFFFULL) {
+            snprintf(offset_str, sizeof(offset_str),
+                     view->hex_case == HXD_HEX_LOWERCASE ? "%016llx" : "%016llX",
+                     (unsigned long long)line_offset);
+        } else {
+            snprintf(offset_str, sizeof(offset_str),
+                     view->hex_case == HXD_HEX_LOWERCASE ? "%08llx" : "%08llX",
+                     (unsigned long long)line_offset);
+        }
         pango_layout_set_text(layout, offset_str, -1);
         cairo_set_source_rgb(cr, tc->offset_text_r, tc->offset_text_g, tc->offset_text_b);
-        cairo_move_to(cr, 8, y + 2);
+        cairo_move_to(cr, 6, y + 2);
         pango_cairo_show_layout(cr, layout);
 
-        // Read bytes for this line
+        // Read bytes for this line and check edit status
         int bytes_in_line = 0;
+        bool is_modified_buffer[128];
+        memset(is_modified_buffer, 0, sizeof(is_modified_buffer));
+
         if (line_offset < doc_size) {
             bytes_in_line = (int)((doc_size - line_offset < (hxd_size_t)bpr) ? (doc_size - line_offset) : (hxd_size_t)bpr);
             pt_read_bytes(view->doc->pt, line_offset, line_buffer, bytes_in_line, is_gap_buffer);
+            doc_get_modified_bytes(view->doc, line_offset, bytes_in_line, is_modified_buffer);
         }
 
         // Render each byte in Hex and ASCII
@@ -407,8 +425,9 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
                                 byte_off >= view->doc->selection.start &&
                                 byte_off < view->doc->selection.start + view->doc->selection.length);
             bool is_cursor = (byte_off == view->doc->cursor_offset);
+            bool is_edited = (col < bytes_in_line && is_modified_buffer[col]);
 
-            // Cursor highlight
+            // Cursor highlight with nibble caret
             if (is_cursor) {
                 if (view->doc->cursor_in_ascii) {
                     cairo_set_source_rgb(cr, tc->cursor_bg_r, tc->cursor_bg_g, tc->cursor_bg_b);
@@ -420,21 +439,26 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
                     cairo_rectangle(cr, byte_x - 2, y + 1, 2 * view->char_width + 4, view->line_height - 2);
                     cairo_stroke(cr);
                 } else {
-                    cairo_set_source_rgb(cr, tc->cursor_bg_r, tc->cursor_bg_g, tc->cursor_bg_b);
-                    cairo_rectangle(cr, byte_x - 2, y + 1, 2 * view->char_width + 4, view->line_height - 2);
-                    cairo_fill(cr);
-
                     // Secondary border in ascii
                     cairo_set_source_rgb(cr, tc->cursor_border_r, tc->cursor_border_g, tc->cursor_border_b);
                     cairo_rectangle(cr, ascii_x, y + 1, view->char_width, view->line_height - 2);
                     cairo_stroke(cr);
 
-                    // Nibble caret indicator
-                    if (view->doc->cursor_nibble == 1) {
-                        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-                        cairo_rectangle(cr, byte_x + view->char_width - 1, y + view->line_height - 3, view->char_width, 2);
-                        cairo_fill(cr);
-                    }
+                    // Enclosing frame around current byte in hex
+                    cairo_set_source_rgba(cr, tc->cursor_border_r, tc->cursor_border_g, tc->cursor_border_b, 0.55);
+                    cairo_rectangle(cr, byte_x - 2, y + 1, 2 * view->char_width + 4, view->line_height - 2);
+                    cairo_stroke(cr);
+
+                    // Active nibble highlight
+                    int nib_x = (view->doc->cursor_nibble == 0) ? byte_x : (byte_x + view->char_width);
+                    cairo_set_source_rgb(cr, tc->cursor_bg_r, tc->cursor_bg_g, tc->cursor_bg_b);
+                    cairo_rectangle(cr, nib_x - 1, y + 1, view->char_width + 2, view->line_height - 2);
+                    cairo_fill(cr);
+
+                    // High-contrast vertical cursor caret next to the clicked nibble
+                    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                    cairo_rectangle(cr, nib_x - 2, y + 1, 2, view->line_height - 2);
+                    cairo_fill(cr);
                 }
             }
 
@@ -448,36 +472,85 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
                     ascii_text[0] = '.';
                     ascii_text[1] = '\0';
                     cairo_set_source_rgb(cr, tc->gap_text_r, tc->gap_text_g, tc->gap_text_b);
+                    pango_layout_set_text(layout, hex_text, -1);
+                    cairo_move_to(cr, byte_x, y + 2);
+                    pango_cairo_show_layout(cr, layout);
+
+                    pango_layout_set_text(layout, ascii_text, -1);
+                    cairo_move_to(cr, ascii_x, y + 2);
+                    pango_cairo_show_layout(cr, layout);
                 } else {
                     uint8_t val = line_buffer[col];
                     snprintf(hex_text, sizeof(hex_text), view->hex_case == HXD_HEX_LOWERCASE ? "%02x" : "%02X", val);
                     ascii_text[0] = (val >= 32 && val <= 126) ? (char)val : '.';
                     ascii_text[1] = '\0';
 
-                    if (is_cursor) {
+                    // Pick bold layout if selected OR edited
+                    PangoLayout *target_layout = (is_selected || is_edited) ? bold_layout : layout;
+
+                    // Hex digits rendering
+                    if (is_cursor && !view->doc->cursor_in_ascii) {
+                        // High nibble
+                        char n0[2] = { hex_text[0], '\0' };
+                        pango_layout_set_text(target_layout, n0, -1);
+                        if (view->doc->cursor_nibble == 0) {
+                            cairo_set_source_rgb(cr, tc->cursor_text_r, tc->cursor_text_g, tc->cursor_text_b);
+                        } else if (is_edited) {
+                            cairo_set_source_rgb(cr, tc->modified_r, tc->modified_g, tc->modified_b);
+                        } else if (is_selected) {
+                            cairo_set_source_rgb(cr, tc->text_r > 0.5 ? 1.0 : 0.0, tc->text_r > 0.5 ? 1.0 : 0.2, tc->text_r > 0.5 ? 1.0 : 0.15);
+                        } else {
+                            cairo_set_source_rgb(cr, tc->text_r, tc->text_g, tc->text_b);
+                        }
+                        cairo_move_to(cr, byte_x, y + 2);
+                        pango_cairo_show_layout(cr, target_layout);
+
+                        // Low nibble
+                        char n1[2] = { hex_text[1], '\0' };
+                        pango_layout_set_text(target_layout, n1, -1);
+                        if (view->doc->cursor_nibble == 1) {
+                            cairo_set_source_rgb(cr, tc->cursor_text_r, tc->cursor_text_g, tc->cursor_text_b);
+                        } else if (is_edited) {
+                            cairo_set_source_rgb(cr, tc->modified_r, tc->modified_g, tc->modified_b);
+                        } else if (is_selected) {
+                            cairo_set_source_rgb(cr, tc->text_r > 0.5 ? 1.0 : 0.0, tc->text_r > 0.5 ? 1.0 : 0.2, tc->text_r > 0.5 ? 1.0 : 0.15);
+                        } else {
+                            cairo_set_source_rgb(cr, tc->text_r, tc->text_g, tc->text_b);
+                        }
+                        cairo_move_to(cr, byte_x + view->char_width, y + 2);
+                        pango_cairo_show_layout(cr, target_layout);
+                    } else {
+                        // Non-cursor hex
+                        if (is_cursor) {
+                            cairo_set_source_rgb(cr, tc->cursor_text_r, tc->cursor_text_g, tc->cursor_text_b);
+                        } else if (is_selected) {
+                            if (tc->text_r > 0.5) cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                            else cairo_set_source_rgb(cr, 0.00, 0.20, 0.15);
+                        } else if (is_edited) {
+                            cairo_set_source_rgb(cr, tc->modified_r, tc->modified_g, tc->modified_b);
+                        } else {
+                            cairo_set_source_rgb(cr, tc->text_r, tc->text_g, tc->text_b);
+                        }
+                        pango_layout_set_text(target_layout, hex_text, -1);
+                        cairo_move_to(cr, byte_x, y + 2);
+                        pango_cairo_show_layout(cr, target_layout);
+                    }
+
+                    // ASCII rendering
+                    if (is_cursor && view->doc->cursor_in_ascii) {
                         cairo_set_source_rgb(cr, tc->cursor_text_r, tc->cursor_text_g, tc->cursor_text_b);
                     } else if (is_selected) {
-                        if (tc->text_r > 0.5) {
-                            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-                        } else {
-                            cairo_set_source_rgb(cr, 0.00, 0.20, 0.15);
-                        }
+                        if (tc->text_r > 0.5) cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                        else cairo_set_source_rgb(cr, 0.00, 0.20, 0.15);
+                    } else if (is_edited) {
+                        cairo_set_source_rgb(cr, tc->modified_r, tc->modified_g, tc->modified_b);
                     } else {
                         cairo_set_source_rgb(cr, tc->text_r, tc->text_g, tc->text_b);
                     }
+                    pango_layout_set_text(target_layout, ascii_text, -1);
+                    cairo_move_to(cr, ascii_x, y + 2);
+                    pango_cairo_show_layout(cr, target_layout);
                 }
-
-                PangoLayout *target_layout = is_selected ? bold_layout : layout;
-
-                // Show hex
-                pango_layout_set_text(target_layout, hex_text, -1);
-                cairo_move_to(cr, byte_x, y + 2);
-                pango_cairo_show_layout(cr, target_layout);
-
-                // Show ascii
-                pango_layout_set_text(target_layout, ascii_text, -1);
-                cairo_move_to(cr, ascii_x, y + 2);
-                pango_cairo_show_layout(cr, target_layout);
             }
         }
     }
@@ -506,11 +579,13 @@ static hxd_offset_t coords_to_offset(HexView *view, double x, double y, bool *ou
         col = (int)((x - view->ascii_col_x - 4) / view->char_width);
     } else if (x >= view->hex_col_x) {
         int rel_x = (int)(x - view->hex_col_x - 4);
+        if (rel_x < 0) rel_x = 0;
         int byte_w = 3 * view->char_width;
         if (rel_x > 8 * byte_w) rel_x -= view->char_width; // account for mid-gap
+        if (rel_x < 0) rel_x = 0;
         col = rel_x / byte_w;
         int in_byte_x = rel_x % byte_w;
-        if (in_byte_x > view->char_width) nibble = 1;
+        nibble = (in_byte_x >= view->char_width) ? 1 : 0;
     }
 
     if (col < 0) col = 0;

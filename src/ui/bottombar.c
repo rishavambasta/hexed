@@ -341,10 +341,17 @@ static void on_fc_browse_clicked(GtkButton *btn, gpointer user_data) {
         NULL
     );
 
+    if (app && app->last_open_dir && g_file_test(app->last_open_dir, G_FILE_TEST_IS_DIR)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), app->last_open_dir);
+    }
+
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-        gtk_entry_set_text(GTK_ENTRY(bb->fc_entry_path), filename);
-        g_free(filename);
+        if (filename) {
+            if (app) app_remember_file_dir(app, filename);
+            gtk_entry_set_text(GTK_ENTRY(bb->fc_entry_path), filename);
+            g_free(filename);
+        }
     }
     gtk_widget_destroy(dialog);
 }

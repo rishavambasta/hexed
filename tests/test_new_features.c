@@ -870,6 +870,80 @@ static void test_search_robustness_and_features(void) {
     printf("  [PASS] Search robustness, flexible parsing, and chunked search verified!\n");
 }
 
+static void test_edited_bytes_tracking_and_saving(void) {
+    printf("Testing edited bytes tracking in red/bold until save...\n");
+
+    const char *tmp_file = "/tmp/test_hexed_edited_bytes.bin";
+    FILE *f = fopen(tmp_file, "wb");
+    assert(f != NULL);
+    const char *initial_data = "ABCDEF0123456789";
+    size_t initial_len = strlen(initial_data);
+    fwrite(initial_data, 1, initial_len, f);
+    fclose(f);
+
+    document_t *doc = doc_open_file(tmp_file);
+    assert(doc != NULL);
+    assert(doc->is_modified == false);
+
+    bool modified[32];
+    memset(modified, 0xFF, sizeof(modified));
+    doc_get_modified_bytes(doc, 0, initial_len, modified);
+    for (size_t i = 0; i < initial_len; i++) {
+        assert(modified[i] == false);
+    }
+
+    // Type a hex digit at offset 2 ('C' -> 0x43)
+    doc_set_cursor(doc, 2, false);
+    doc->cursor_nibble = 0;
+    doc_type_hex_digit(doc, '7'); // 0x73
+    assert(doc->is_modified == true);
+
+    memset(modified, 0, sizeof(modified));
+    doc_get_modified_bytes(doc, 0, initial_len, modified);
+    assert(modified[0] == false);
+    assert(modified[1] == false);
+    assert(modified[2] == true); // Offset 2 was edited!
+    assert(modified[3] == false);
+
+    // Test Undo
+    assert(doc_undo(doc) == true);
+    assert(doc->is_modified == false);
+    memset(modified, 0xFF, sizeof(modified));
+    doc_get_modified_bytes(doc, 0, initial_len, modified);
+    for (size_t i = 0; i < initial_len; i++) {
+        assert(modified[i] == false); // Reset upon undo
+    }
+
+    // Test Redo
+    assert(doc_redo(doc) == true);
+    assert(doc->is_modified == true);
+    memset(modified, 0, sizeof(modified));
+    doc_get_modified_bytes(doc, 0, initial_len, modified);
+    assert(modified[2] == true);
+
+    // Save document: all edited flags should clear!
+    assert(doc_save(doc) == true);
+    assert(doc->is_modified == false);
+    memset(modified, 0xFF, sizeof(modified));
+    doc_get_modified_bytes(doc, 0, initial_len, modified);
+    for (size_t i = 0; i < initial_len; i++) {
+        assert(modified[i] == false); // Clean after save!
+    }
+
+    // Edit another byte at offset 5
+    doc_set_cursor(doc, 5, false);
+    doc_type_hex_digit(doc, '9');
+    assert(doc->is_modified == true);
+    memset(modified, 0, sizeof(modified));
+    doc_get_modified_bytes(doc, 0, initial_len, modified);
+    assert(modified[2] == false); // Offset 2 was saved, not edited now
+    assert(modified[5] == true);  // Offset 5 is newly edited
+
+    doc_free(doc);
+    unlink(tmp_file);
+    printf("  [PASS] Edited bytes tracking and save reset verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -885,6 +959,7 @@ int main(void) {
     test_tab_context_close_logic();
     test_intel_hex_open_modes();
     test_search_robustness_and_features();
+    test_edited_bytes_tracking_and_saving();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

@@ -189,6 +189,65 @@ static void add_document_tab(App *app, document_t *doc) {
     }
 }
 
+static char *get_config_last_dir_path(void) {
+    const char *xdg = g_getenv("XDG_CONFIG_HOME");
+    char path[1024];
+    if (xdg && xdg[0]) {
+        snprintf(path, sizeof(path), "%s/hexed", xdg);
+    } else {
+        const char *home = g_getenv("HOME");
+        if (!home) home = ".";
+        snprintf(path, sizeof(path), "%s/.config/hexed", home);
+    }
+    g_mkdir_with_parents(path, 0755);
+    strncat(path, "/last_dir", sizeof(path) - strlen(path) - 1);
+    return strdup(path);
+}
+
+static char *load_last_dir(void) {
+    char *cfg = get_config_last_dir_path();
+    char *dir = NULL;
+    FILE *f = fopen(cfg, "r");
+    if (f) {
+        char buf[1024];
+        if (fgets(buf, sizeof(buf), f)) {
+            size_t l = strlen(buf);
+            while (l > 0 && (buf[l - 1] == '\r' || buf[l - 1] == '\n')) {
+                buf[--l] = '\0';
+            }
+            if (l > 0 && g_file_test(buf, G_FILE_TEST_IS_DIR)) {
+                dir = strdup(buf);
+            }
+        }
+        fclose(f);
+    }
+    free(cfg);
+    return dir;
+}
+
+static void save_last_dir(const char *dir) {
+    if (!dir || !dir[0]) return;
+    char *cfg = get_config_last_dir_path();
+    FILE *f = fopen(cfg, "w");
+    if (f) {
+        fputs(dir, f);
+        fputc('\n', f);
+        fclose(f);
+    }
+    free(cfg);
+}
+
+void app_remember_file_dir(App *app, const char *filepath) {
+    if (!app || !filepath) return;
+    char *dir = g_path_get_dirname(filepath);
+    if (dir && strcmp(dir, ".") != 0 && g_file_test(dir, G_FILE_TEST_IS_DIR)) {
+        if (app->last_open_dir) free(app->last_open_dir);
+        app->last_open_dir = strdup(dir);
+        save_last_dir(dir);
+    }
+    if (dir) g_free(dir);
+}
+
 App *app_create(void) {
     App *app = calloc(1, sizeof(App));
     app->theme = HXD_THEME_DARK;
@@ -196,6 +255,7 @@ App *app_create(void) {
     app->cross_highlighting = true;
     app->hex_case = HXD_HEX_LOWERCASE;
     app->bytes_per_row = 16;
+    app->last_open_dir = load_last_dir();
 
     theme_init();
 
@@ -405,6 +465,8 @@ void app_new_document(App *app) {
 void app_open_document(App *app, const char *path) {
     if (!path) return;
 
+    app_remember_file_dir(app, path);
+
     bool convert_ihex = true;
     if (ihex_is_intel_hex(path, true)) {
         int choice = dialog_prompt_ihex_mode(app, path);
@@ -430,6 +492,20 @@ void app_open_dialog(App *app) {
         NULL
     );
 
+    // Set initial directory: remember user's last opened folder location
+    if (app->last_open_dir && g_file_test(app->last_open_dir, G_FILE_TEST_IS_DIR)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), app->last_open_dir);
+    } else {
+        document_t *cur_doc = app_get_active_document(app);
+        if (cur_doc && cur_doc->filepath) {
+            char *cur_dir = g_path_get_dirname(cur_doc->filepath);
+            if (cur_dir && g_file_test(cur_dir, G_FILE_TEST_IS_DIR)) {
+                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), cur_dir);
+            }
+            if (cur_dir) g_free(cur_dir);
+        }
+    }
+
     GtkFileFilter *filter_all = gtk_file_filter_new();
     gtk_file_filter_set_name(filter_all, "All Supported Files (*.*, .hex, .srec)");
     gtk_file_filter_add_pattern(filter_all, "*");
@@ -445,8 +521,11 @@ void app_open_dialog(App *app) {
 
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-        app_open_document(app, filename);
-        g_free(filename);
+        if (filename) {
+            app_remember_file_dir(app, filename);
+            app_open_document(app, filename);
+            g_free(filename);
+        }
     }
     gtk_widget_destroy(dialog);
 }
@@ -475,17 +554,24 @@ void app_save_as_document(App *app) {
         NULL
     );
     gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
+
     if (doc->filepath) {
         gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(dialog), doc->filepath);
     } else {
+        if (app->last_open_dir && g_file_test(app->last_open_dir, G_FILE_TEST_IS_DIR)) {
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), app->last_open_dir);
+        }
         gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog), "output.bin");
     }
 
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-        doc_save_as(doc, filename);
-        g_free(filename);
-        app_update_ui(app);
+        if (filename) {
+            app_remember_file_dir(app, filename);
+            doc_save_as(doc, filename);
+            g_free(filename);
+            app_update_ui(app);
+        }
     }
     gtk_widget_destroy(dialog);
 }

@@ -30,6 +30,7 @@ document_t *doc_create_new(void) {
     doc->is_modified = false;
     doc->saved_history_index = doc->history->current_index;
     doc->history->saved_index = doc->saved_history_index;
+    doc->saved_pt = pt_clone(doc->pt);
     return doc;
 }
 
@@ -73,6 +74,7 @@ document_t *doc_open_file_ex(const char *path, bool convert_ihex) {
     doc->is_modified = false;
     doc->saved_history_index = doc->history->current_index;
     doc->history->saved_index = doc->saved_history_index;
+    doc->saved_pt = pt_clone(doc->pt);
     return doc;
 }
 
@@ -102,20 +104,32 @@ bool doc_save_as(document_t *doc, const char *new_path) {
     }
 
     if (ok) {
+        char *saved_path = strdup(new_path);
         if (doc->filepath) free(doc->filepath);
-        doc->filepath = strdup(new_path);
+        doc->filepath = saved_path;
 
-        const char *slash = strrchr(new_path, '/');
+        const char *slash = strrchr(doc->filepath, '/');
 #ifdef _WIN32
-        const char *bslash = strrchr(new_path, '\\');
+        const char *bslash = strrchr(doc->filepath, '\\');
         if (bslash && (!slash || bslash > slash)) slash = bslash;
 #endif
         if (doc->display_name) free(doc->display_name);
-        doc->display_name = strdup(slash ? slash + 1 : new_path);
+        doc->display_name = strdup(slash ? slash + 1 : doc->filepath);
 
         doc->is_modified = false;
         doc->saved_history_index = doc->history->current_index;
         doc->history->saved_index = doc->saved_history_index;
+
+        if (!doc->is_raw_hex_format && (!ext || (strcasecmp(ext, ".hex") != 0 && strcasecmp(ext, ".ihex") != 0 && strcasecmp(ext, ".srec") != 0 && strcasecmp(ext, ".s19") != 0 && strcasecmp(ext, ".s28") != 0 && strcasecmp(ext, ".s37") != 0))) {
+            piece_table_t *new_pt = pt_open_file(doc->filepath);
+            if (new_pt) {
+                pt_free(doc->pt);
+                doc->pt = new_pt;
+            }
+        }
+
+        if (doc->saved_pt) pt_free(doc->saved_pt);
+        doc->saved_pt = pt_clone(doc->pt);
     }
 
     return ok;
@@ -124,6 +138,7 @@ bool doc_save_as(document_t *doc, const char *new_path) {
 void doc_free(document_t *doc) {
     if (!doc) return;
     if (doc->pt) pt_free(doc->pt);
+    if (doc->saved_pt) pt_free(doc->saved_pt);
     if (doc->history) history_free(doc->history);
     if (doc->filepath) free(doc->filepath);
     if (doc->display_name) free(doc->display_name);
@@ -469,4 +484,65 @@ bool doc_bitwise_op(document_t *doc, hxd_offset_t offset, hxd_size_t len, hxd_bi
         history_record(doc->history, HXD_ACTION_REPLACE, op_name, offset, len, doc->pt);
     }
     return ok;
+}
+
+void doc_get_modified_bytes(const document_t *doc, hxd_offset_t offset, size_t len, bool *out_modified) {
+    if (!out_modified || len == 0) return;
+    if (!doc || !doc->is_modified) {
+        memset(out_modified, 0, len * sizeof(bool));
+        return;
+    }
+
+    if (!doc->saved_pt) {
+        memset(out_modified, 1, len * sizeof(bool));
+        return;
+    }
+
+    hxd_size_t saved_sz = pt_get_size(doc->saved_pt);
+    uint8_t curr_buf[128], saved_buf[128];
+    bool curr_gap[128], saved_gap[128];
+
+    uint8_t *curr_p = curr_buf;
+    uint8_t *saved_p = saved_buf;
+    bool *curr_gap_p = curr_gap;
+    bool *saved_gap_p = saved_gap;
+
+    if (len > sizeof(curr_buf)) {
+        curr_p = malloc(len);
+        saved_p = malloc(len);
+        curr_gap_p = malloc(len * sizeof(bool));
+        saved_gap_p = malloc(len * sizeof(bool));
+        if (!curr_p || !saved_p || !curr_gap_p || !saved_gap_p) {
+            if (curr_p && curr_p != curr_buf) free(curr_p);
+            if (saved_p && saved_p != saved_buf) free(saved_p);
+            if (curr_gap_p && curr_gap_p != curr_gap) free(curr_gap_p);
+            if (saved_gap_p && saved_gap_p != saved_gap) free(saved_gap_p);
+            memset(out_modified, 1, len * sizeof(bool));
+            return;
+        }
+    }
+
+    hxd_size_t curr_read = pt_read_bytes(doc->pt, offset, curr_p, len, curr_gap_p);
+    hxd_size_t saved_read = 0;
+    if (offset < saved_sz) {
+        hxd_size_t to_read = (offset + len > saved_sz) ? (saved_sz - offset) : len;
+        saved_read = pt_read_bytes(doc->saved_pt, offset, saved_p, to_read, saved_gap_p);
+    }
+
+    for (size_t i = 0; i < len; i++) {
+        if (i >= curr_read) {
+            out_modified[i] = false;
+        } else if (offset + i >= saved_sz || i >= saved_read) {
+            out_modified[i] = true;
+        } else if (curr_p[i] != saved_p[i] || curr_gap_p[i] != saved_gap_p[i]) {
+            out_modified[i] = true;
+        } else {
+            out_modified[i] = false;
+        }
+    }
+
+    if (curr_p != curr_buf) free(curr_p);
+    if (saved_p != saved_buf) free(saved_p);
+    if (curr_gap_p != curr_gap) free(curr_gap_p);
+    if (saved_gap_p != saved_gap) free(saved_gap_p);
 }

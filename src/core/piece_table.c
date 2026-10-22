@@ -542,8 +542,16 @@ bool pt_set_size(piece_table_t *pt, hxd_size_t new_size, uint8_t pad_byte) {
 bool pt_save_file(const piece_table_t *pt, const char *path) {
     if (!pt || !path) return false;
 
-    FILE *f = fopen(path, "wb");
-    if (!f) return false;
+    char tmp_path[1024];
+    snprintf(tmp_path, sizeof(tmp_path), "%s.hxd_tmp", path);
+
+    FILE *f = fopen(tmp_path, "wb");
+    if (!f) {
+        // Fallback to direct path if temp file creation failed
+        f = fopen(path, "wb");
+        if (!f) return false;
+        tmp_path[0] = '\0';
+    }
 
     uint8_t buffer[65536];
     hxd_offset_t offset = 0;
@@ -555,12 +563,25 @@ bool pt_save_file(const piece_table_t *pt, const char *path) {
         pt_read_bytes(pt, offset, buffer, chunk, NULL);
         if (fwrite(buffer, 1, chunk, f) != chunk) {
             fclose(f);
+            if (tmp_path[0]) unlink(tmp_path);
             return false;
         }
         offset += chunk;
     }
 
     fclose(f);
+
+    if (tmp_path[0]) {
+#ifdef _WIN32
+        MoveFileExA(tmp_path, path, MOVEFILE_REPLACE_EXISTING);
+#else
+        if (rename(tmp_path, path) != 0) {
+            unlink(tmp_path);
+            return false;
+        }
+#endif
+    }
+
     return true;
 }
 

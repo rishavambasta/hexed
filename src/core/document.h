@@ -26,6 +26,7 @@ typedef struct {
 
     bool              is_modified;
     int               saved_history_index;
+    piece_table_t    *saved_pt;      // Baseline snapshot at open/save time for tracking edits
     hxd_endianness_t  endian;
     int               bytes_per_row; // default 16
 
@@ -73,5 +74,8 @@ bool        doc_jump_to_history(document_t *doc, int history_index);
 /* Bookmarks */
 bool        doc_toggle_bookmark(document_t *doc, hxd_offset_t offset, const char *name);
 void        doc_remove_bookmark(document_t *doc, size_t index);
+
+/* Edit tracking */
+void        doc_get_modified_bytes(const document_t *doc, hxd_offset_t offset, size_t len, bool *out_modified);
 
 #endif // HXD_DOCUMENT_H

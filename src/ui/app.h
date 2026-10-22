@@ -42,6 +42,7 @@ typedef struct _App {
     bool           cross_highlighting;
     hxd_hex_case_t hex_case;
     int            bytes_per_row;
+    char          *last_open_dir; // Remembered directory for file dialogs
 } App;
 
 /* App lifecycle */
@@ -52,6 +53,7 @@ void        app_update_ui(App *app);
 /* Document operations */
 document_t *app_get_active_document(App *app);
 HexView    *app_get_active_view(App *app);
+void        app_remember_file_dir(App *app, const char *filepath);
 void        app_new_document(App *app);
 void        app_open_document(App *app, const char *path);
 void        app_open_dialog(App *app);

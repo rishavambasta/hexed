@@ -11,7 +11,7 @@ static const theme_colors_t s_dark_colors = {
     .offset_text_r = 0.65, .offset_text_g = 0.75, .offset_text_b = 0.85, // muted cyan
     .header_bg_r = 0.176, .header_bg_g = 0.176, .header_bg_b = 0.176, // #2d2d2d
     .header_text_r = 0.80, .header_text_g = 0.80, .header_text_b = 0.80,
-    .odd_col_bg_r = 0.145, .odd_col_bg_g = 0.145, .odd_col_bg_b = 0.145, // #252525
+    .odd_col_bg_r = 0.192, .odd_col_bg_g = 0.192, .odd_col_bg_b = 0.200, // #313133 (high-contrast alternating column)
     .cross_bg_r = 0.14, .cross_bg_g = 0.22, .cross_bg_b = 0.32,   // subtle blue
     .sel_bg_r = 0.05, .sel_bg_g = 0.30, .sel_bg_b = 0.55,       // #0c4075
     .cursor_border_r = 1.0, .cursor_border_g = 0.85, .cursor_border_b = 0.2, // gold
@@ -19,7 +19,7 @@ static const theme_colors_t s_dark_colors = {
     .cursor_text_r = 0.0, .cursor_text_g = 0.0, .cursor_text_b = 0.0,
     .gap_bg_r = 0.18, .gap_bg_g = 0.15, .gap_bg_b = 0.15,
     .gap_text_r = 0.50, .gap_text_g = 0.45, .gap_text_b = 0.45,
-    .modified_r = 1.0, .modified_g = 0.25, .modified_b = 0.1
+    .modified_r = 1.0, .modified_g = 0.20, .modified_b = 0.20   // vivid red for edited bytes
 };
 
 static const theme_colors_t s_light_colors = {
@@ -29,7 +29,7 @@ static const theme_colors_t s_light_colors = {
     .offset_text_r = 0.2, .offset_text_g = 0.4, .offset_text_b = 0.6,
     .header_bg_r = 0.94, .header_bg_g = 0.94, .header_bg_b = 0.94,
     .header_text_r = 0.3, .header_text_g = 0.3, .header_text_b = 0.3,
-    .odd_col_bg_r = 0.975, .odd_col_bg_g = 0.975, .odd_col_bg_b = 0.975, // #f9f9f9
+    .odd_col_bg_r = 0.910, .odd_col_bg_g = 0.920, .odd_col_bg_b = 0.935, // #e8ebef (high-contrast alternating column)
     .cross_bg_r = 0.92, .cross_bg_g = 0.96, .cross_bg_b = 1.0,   // subtle blue
     .sel_bg_r = 0.78, .sel_bg_g = 0.91, .sel_bg_b = 0.97,       // #c7eaf7
     .cursor_border_r = 0.8, .cursor_border_g = 0.5, .cursor_border_b = 0.1,
@@ -37,7 +37,7 @@ static const theme_colors_t s_light_colors = {
     .cursor_text_r = 0.0, .cursor_text_g = 0.0, .cursor_text_b = 0.0,
     .gap_bg_r = 0.93, .gap_bg_g = 0.90, .gap_bg_b = 0.90,
     .gap_text_r = 0.60, .gap_text_g = 0.60, .gap_text_b = 0.60,
-    .modified_r = 0.9, .modified_g = 0.1, .modified_b = 0.1
+    .modified_r = 0.88, .modified_g = 0.05, .modified_b = 0.05  // vivid red for edited bytes
 };
 
 static const theme_colors_t s_bw_colors = {
@@ -47,7 +47,7 @@ static const theme_colors_t s_bw_colors = {
     .offset_text_r = 0.2, .offset_text_g = 0.2, .offset_text_b = 0.2,
     .header_bg_r = 0.90, .header_bg_g = 0.90, .header_bg_b = 0.90,
     .header_text_r = 0.0, .header_text_g = 0.0, .header_text_b = 0.0,
-    .odd_col_bg_r = 0.95, .odd_col_bg_g = 0.95, .odd_col_bg_b = 0.95,
+    .odd_col_bg_r = 0.88, .odd_col_bg_g = 0.88, .odd_col_bg_b = 0.88,   // high-contrast alternating column
     .cross_bg_r = 0.88, .cross_bg_g = 0.88, .cross_bg_b = 0.88,
     .sel_bg_r = 0.70, .sel_bg_g = 0.70, .sel_bg_b = 0.70,
     .cursor_border_r = 0.0, .cursor_border_g = 0.0, .cursor_border_b = 0.0,
@@ -55,7 +55,7 @@ static const theme_colors_t s_bw_colors = {
     .cursor_text_r = 1.0, .cursor_text_g = 1.0, .cursor_text_b = 1.0,
     .gap_bg_r = 0.85, .gap_bg_g = 0.85, .gap_bg_b = 0.85,
     .gap_text_r = 0.50, .gap_text_g = 0.50, .gap_text_b = 0.50,
-    .modified_r = 0.0, .modified_g = 0.0, .modified_b = 0.0
+    .modified_r = 0.75, .modified_g = 0.0, .modified_b = 0.0
 };
 
 static const char *s_dark_css =

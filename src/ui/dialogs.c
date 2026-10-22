@@ -233,11 +233,24 @@ void dialog_show_insert_file(App *app) {
         NULL
     );
 
+    if (app->last_open_dir && g_file_test(app->last_open_dir, G_FILE_TEST_IS_DIR)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), app->last_open_dir);
+    } else if (doc->filepath) {
+        char *dir = g_path_get_dirname(doc->filepath);
+        if (dir && g_file_test(dir, G_FILE_TEST_IS_DIR)) {
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog), dir);
+        }
+        if (dir) g_free(dir);
+    }
+
     if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
         char *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-        doc_insert_file(doc, filename);
-        g_free(filename);
-        app_update_ui(app);
+        if (filename) {
+            app_remember_file_dir(app, filename);
+            doc_insert_file(doc, filename);
+            g_free(filename);
+            app_update_ui(app);
+        }
     }
 
     gtk_widget_destroy(dialog);
@@ -1192,10 +1205,16 @@ static void on_diff_browse_f1(GtkButton *btn, gpointer user_data) {
         "_Open", GTK_RESPONSE_ACCEPT,
         NULL
     );
+    if (st->app && st->app->last_open_dir && g_file_test(st->app->last_open_dir, G_FILE_TEST_IS_DIR)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(chooser), st->app->last_open_dir);
+    }
     if (gtk_dialog_run(GTK_DIALOG(chooser)) == GTK_RESPONSE_ACCEPT) {
         char *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
-        gtk_entry_set_text(GTK_ENTRY(st->entry_f1), path);
-        g_free(path);
+        if (path) {
+            if (st->app) app_remember_file_dir(st->app, path);
+            gtk_entry_set_text(GTK_ENTRY(st->entry_f1), path);
+            g_free(path);
+        }
     }
     gtk_widget_destroy(chooser);
 }
@@ -1211,10 +1230,16 @@ static void on_diff_browse_f2(GtkButton *btn, gpointer user_data) {
         "_Open", GTK_RESPONSE_ACCEPT,
         NULL
     );
+    if (st->app && st->app->last_open_dir && g_file_test(st->app->last_open_dir, G_FILE_TEST_IS_DIR)) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(chooser), st->app->last_open_dir);
+    }
     if (gtk_dialog_run(GTK_DIALOG(chooser)) == GTK_RESPONSE_ACCEPT) {
         char *path = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(chooser));
-        gtk_entry_set_text(GTK_ENTRY(st->entry_f2), path);
-        g_free(path);
+        if (path) {
+            if (st->app) app_remember_file_dir(st->app, path);
+            gtk_entry_set_text(GTK_ENTRY(st->entry_f2), path);
+            g_free(path);
+        }
     }
     gtk_widget_destroy(chooser);
 }
