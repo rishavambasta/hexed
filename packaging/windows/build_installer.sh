@@ -91,12 +91,13 @@ else
     exit 1
 fi
 
-echo "=== Compiling NSIS Windows Installer ==="
+VERSION=$(grep -E 'HEXED_VERSION\s+' "$PROJECT_ROOT/src/version.h" | awk -F'"' '{print $2}')
+
+echo "=== Compiling NSIS Windows Installer for v${VERSION} ==="
 cd "$PROJECT_ROOT/packaging/windows"
-"$MAKENSIS" installer.nsi
+"$MAKENSIS" -DPRODUCT_VERSION="$VERSION" installer.nsi
 cd "$PROJECT_ROOT"
 
-VERSION=$(grep -E 'HEXED_VERSION\s+' "$PROJECT_ROOT/src/version.h" | awk -F'"' '{print $2}')
 echo "Successfully built: dist/HexEd-${VERSION}-Setup-win64.exe"
 ls -lh "dist/HexEd-${VERSION}-Setup-win64.exe"
 
