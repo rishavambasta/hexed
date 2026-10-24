@@ -1,4 +1,4 @@
-# HexEd (v1.6)
+# HexEd (v1.7)
 
 **Author:** Rishav Ambasta
 
@@ -38,6 +38,8 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - Middle-click directly closes any tab.
 - **Top Icons for Open & New**:
   - Prominent dedicated `tab-new` and `document-open` action icons docked directly on top of the notebook tab bar and toolbar.
+- **Drag & Drop File Opening**:
+  - Drag one or multiple files directly from your system file manager (Linux or Windows) and drop anywhere into the window to open them instantly.
 - **`Ctrl + G` Jump to Address / Offset**:
   - Interactive Goto dialog supporting both Hexadecimal (`0x...` or trailing `h`/`H`) and Decimal offsets.
   - Origins: Absolute (`0x0`), Relative to Cursor (`+/- Offset`), and Relative to End of File (`EOF - Offset`).

@@ -117,6 +117,79 @@ static gboolean on_tab_button_press(GtkWidget *widget, GdkEventButton *event, gp
     return FALSE;
 }
 
+static void on_drag_data_received(GtkWidget *widget, GdkDragContext *context,
+                                  gint x, gint y, GtkSelectionData *data,
+                                  guint info, guint time, gpointer user_data) {
+    (void)widget;
+    (void)x;
+    (void)y;
+    (void)info;
+    App *app = (App *)user_data;
+    gboolean success = FALSE;
+
+    if (data && gtk_selection_data_get_length(data) > 0) {
+        gchar **uris = gtk_selection_data_get_uris(data);
+        if (uris) {
+            for (int i = 0; uris[i] != NULL; i++) {
+                gchar *filename = g_filename_from_uri(uris[i], NULL, NULL);
+                if (filename) {
+                    app_open_document(app, filename);
+                    g_free(filename);
+                    success = TRUE;
+                } else if (g_str_has_prefix(uris[i], "file://")) {
+                    const char *path = uris[i] + 7;
+                    if (g_file_test(path, G_FILE_TEST_EXISTS)) {
+                        app_open_document(app, path);
+                        success = TRUE;
+                    }
+                }
+            }
+            g_strfreev(uris);
+        } else {
+            const guchar *raw = gtk_selection_data_get_data(data);
+            if (raw) {
+                gchar **lines = g_strsplit((const gchar *)raw, "\n", -1);
+                if (lines) {
+                    for (int i = 0; lines[i] != NULL; i++) {
+                        g_strstrip(lines[i]);
+                        if (lines[i][0] == '\0' || lines[i][0] == '#') continue;
+                        gchar *filename = g_filename_from_uri(lines[i], NULL, NULL);
+                        if (!filename && g_file_test(lines[i], G_FILE_TEST_EXISTS)) {
+                            filename = g_strdup(lines[i]);
+                        }
+                        if (filename) {
+                            app_open_document(app, filename);
+                            g_free(filename);
+                            success = TRUE;
+                        }
+                    }
+                    g_strfreev(lines);
+                }
+            }
+        }
+    }
+
+    if (success && app && app->window) {
+        gtk_window_present(GTK_WINDOW(app->window));
+    }
+
+    gtk_drag_finish(context, success, FALSE, time);
+}
+
+static void app_setup_dnd(GtkWidget *widget, App *app) {
+    if (!widget || !app) return;
+    static const GtkTargetEntry drag_targets[] = {
+        { (char *)"text/uri-list", 0, 0 },
+        { (char *)"text/plain", 0, 1 }
+    };
+    gtk_drag_dest_set(widget,
+                      GTK_DEST_DEFAULT_ALL,
+                      drag_targets,
+                      G_N_ELEMENTS(drag_targets),
+                      GDK_ACTION_COPY);
+    g_signal_connect(widget, "drag-data-received", G_CALLBACK(on_drag_data_received), app);
+}
+
 static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *page, gint x, gint y, gpointer user_data) {
     (void)notebook;
     (void)page;
@@ -126,14 +199,17 @@ static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *
     gtk_window_set_title(GTK_WINDOW(win), HEXED_TITLE_BASE);
     gtk_window_set_default_size(GTK_WINDOW(win), 900, 620);
     g_signal_connect(win, "key-press-event", G_CALLBACK(on_app_window_key_press), app);
+    app_setup_dnd(win, app);
 
     GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(win), vbox);
+    app_setup_dnd(vbox, app);
 
     GtkWidget *new_nb = gtk_notebook_new();
     gtk_notebook_set_scrollable(GTK_NOTEBOOK(new_nb), TRUE);
     gtk_notebook_set_group_name(GTK_NOTEBOOK(new_nb), "hexed-notebook-group");
     g_signal_connect(new_nb, "create-window", G_CALLBACK(on_notebook_create_window), app);
+    app_setup_dnd(new_nb, app);
 
     gtk_box_pack_start(GTK_BOX(vbox), new_nb, TRUE, TRUE, 0);
 
@@ -156,6 +232,8 @@ static void add_document_tab(App *app, document_t *doc) {
     }
     hex_view_set_change_callback(view, on_hex_view_changed, app);
     g_object_set_data(G_OBJECT(view->drawing_area), "app", app);
+    app_setup_dnd(view->drawing_area, app);
+    app_setup_dnd(hex_view_get_widget(view), app);
 
     GtkWidget *tab_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
     GtkWidget *tab_label = gtk_label_new(NULL);
@@ -462,6 +540,8 @@ App *app_create(void) {
 
     app->main_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
     gtk_container_add(GTK_CONTAINER(app->window), app->main_vbox);
+    app_setup_dnd(app->window, app);
+    app_setup_dnd(app->main_vbox, app);
 
     // Toolbar
     app->toolbar = toolbar_create(app);
@@ -473,6 +553,7 @@ App *app_create(void) {
     gtk_notebook_set_group_name(GTK_NOTEBOOK(app->doc_notebook), "hexed-notebook-group");
     g_signal_connect(app->doc_notebook, "create-window", G_CALLBACK(on_notebook_create_window), app);
     g_signal_connect(app->doc_notebook, "switch-page", G_CALLBACK(on_tab_switch), app);
+    app_setup_dnd(app->doc_notebook, app);
 
     // Notebook Top Actions (New and Open icons directly on top of tab bar)
     GtkWidget *tab_actions = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
@@ -648,7 +729,18 @@ void app_open_document(App *app, const char *path) {
 
     document_t *doc = doc_open_file_ex(path, convert_ihex);
     if (doc) {
+        // If there is only 1 tab and it is an unmodified empty Untitled doc, close it when opening
+        HexView *first_view = NULL;
+        if (app->hex_views && app->hex_views->next == NULL) {
+            HexView *v = (HexView *)app->hex_views->data;
+            if (v && v->doc && v->doc->filepath == NULL && !v->doc->is_modified && v->doc->pt && pt_get_size(v->doc->pt) == 0) {
+                first_view = v;
+            }
+        }
         add_document_tab(app, doc);
+        if (first_view) {
+            app_close_document_view(app, first_view, false);
+        }
     }
 }
 
@@ -1350,6 +1442,9 @@ void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
         hex_view_set_font_size(st->v1, app->font_size_pt);
         hex_view_set_font_size(st->v2, app->font_size_pt);
     }
+    app_setup_dnd(st->v1->drawing_area, app);
+    app_setup_dnd(st->v2->drawing_area, app);
+    app_setup_dnd(vbox, app);
 
     g_signal_connect(st->v1->v_adj, "value-changed", G_CALLBACK(on_editor_diff_v1_scrolled), st);
     g_signal_connect(st->v2->v_adj, "value-changed", G_CALLBACK(on_editor_diff_v2_scrolled), st);
