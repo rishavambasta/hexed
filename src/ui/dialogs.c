@@ -1680,6 +1680,10 @@ void dialog_show_settings(App *app) {
     GtkWidget *spin_bpr = gtk_spin_button_new_with_range(8, 64, 8);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin_bpr), app->bytes_per_row);
 
+    // Font size (pt)
+    GtkWidget *spin_font = gtk_spin_button_new_with_range(8, 32, 1);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin_font), app->font_size_pt > 0 ? app->font_size_pt : DEFAULT_FONT_SIZE_PT);
+
     gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Theme:"), 0, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), combo_theme, 1, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), chk_interlace, 1, 1, 1, 1);
@@ -1688,6 +1692,8 @@ void dialog_show_settings(App *app) {
     gtk_grid_attach(GTK_GRID(grid), combo_case, 1, 3, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Bytes Per Row:"), 0, 4, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), spin_bpr, 1, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Font Size (pt):"), 0, 5, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), spin_font, 1, 5, 1, 1);
 
     gtk_container_add(GTK_CONTAINER(content), grid);
     gtk_widget_show_all(dlg);
@@ -1698,8 +1704,9 @@ void dialog_show_settings(App *app) {
         bool new_cross = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(chk_cross));
         hxd_hex_case_t new_case = (hxd_hex_case_t)gtk_combo_box_get_active(GTK_COMBO_BOX(combo_case));
         int new_bpr = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(spin_bpr));
+        int new_font = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(spin_font));
 
-        app_apply_settings(app, new_theme, new_interlace, new_cross, new_case, new_bpr);
+        app_apply_settings(app, new_theme, new_interlace, new_cross, new_case, new_bpr, new_font);
     }
 
     gtk_widget_destroy(dlg);

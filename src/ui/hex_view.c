@@ -8,7 +8,6 @@
 #include <ctype.h>
 #include <math.h>
 
-#define DEFAULT_FONT "Monospace 10"
 
 static void update_metrics(HexView *view) {
     if (!view || !view->drawing_area) return;
@@ -1422,7 +1421,8 @@ HexView *hex_view_create(document_t *doc) {
     view->font_desc = pango_font_description_from_string(DEFAULT_FONT);
     view->bold_font_desc = pango_font_description_copy(view->font_desc);
     pango_font_description_set_weight(view->bold_font_desc, PANGO_WEIGHT_BOLD);
-    view->font_size_pt = 10;
+    view->font_size_pt = DEFAULT_FONT_SIZE_PT;
+    view->default_font_size_pt = DEFAULT_FONT_SIZE_PT;
     view->column_interlacing = true;
     view->cross_highlighting = true;
     view->hex_case = HXD_HEX_LOWERCASE;
@@ -1528,9 +1528,28 @@ void hex_view_refresh(HexView *view) {
     gtk_widget_queue_draw(view->drawing_area);
 }
 
+void hex_view_set_font_size(HexView *view, int size_pt) {
+    if (!view || size_pt < 6 || size_pt > 48) return;
+    view->default_font_size_pt = size_pt;
+    view->font_size_pt = size_pt;
+    pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
+    if (view->bold_font_desc) {
+        pango_font_description_set_size(view->bold_font_desc, view->font_size_pt * PANGO_SCALE);
+    }
+    update_metrics(view);
+    update_scroll_adjustment(view);
+    if (view->drawing_area) {
+        gtk_widget_queue_draw(view->drawing_area);
+    }
+}
+
+int hex_view_get_font_size(HexView *view) {
+    return view ? view->font_size_pt : DEFAULT_FONT_SIZE_PT;
+}
+
 void hex_view_zoom_in(HexView *view) {
     if (!view) return;
-    if (view->font_size_pt < 36) {
+    if (view->font_size_pt < 48) {
         view->font_size_pt++;
         pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
         if (view->bold_font_desc) pango_font_description_set_size(view->bold_font_desc, view->font_size_pt * PANGO_SCALE);
@@ -1554,7 +1573,8 @@ void hex_view_zoom_out(HexView *view) {
 
 void hex_view_zoom_reset(HexView *view) {
     if (!view) return;
-    view->font_size_pt = 10;
+    int target = view->default_font_size_pt > 0 ? view->default_font_size_pt : DEFAULT_FONT_SIZE_PT;
+    view->font_size_pt = target;
     pango_font_description_set_size(view->font_desc, view->font_size_pt * PANGO_SCALE);
     if (view->bold_font_desc) pango_font_description_set_size(view->bold_font_desc, view->font_size_pt * PANGO_SCALE);
     update_metrics(view);

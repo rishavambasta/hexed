@@ -151,6 +151,9 @@ static void add_document_tab(App *app, document_t *doc) {
     hex_view_set_cross_highlighting(view, app->cross_highlighting);
     hex_view_set_hex_case(view, app->hex_case);
     hex_view_set_bytes_per_row(view, app->bytes_per_row);
+    if (app->font_size_pt > 0) {
+        hex_view_set_font_size(view, app->font_size_pt);
+    }
     hex_view_set_change_callback(view, on_hex_view_changed, app);
     g_object_set_data(G_OBJECT(view->drawing_area), "app", app);
 
@@ -270,6 +273,39 @@ static hxd_theme_t load_theme_setting(void) {
     return HXD_THEME_DARK;
 }
 
+static void save_font_size_setting(int font_size) {
+    char path[1024];
+    const char *home = g_get_user_config_dir();
+    if (home) snprintf(path, sizeof(path), "%s/hexed", home);
+    else snprintf(path, sizeof(path), "%s/.config/hexed", g_get_home_dir() ? g_get_home_dir() : ".");
+    g_mkdir_with_parents(path, 0755);
+    strncat(path, "/font_size", sizeof(path) - strlen(path) - 1);
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "%d\n", font_size);
+        fclose(f);
+    }
+}
+
+static int load_font_size_setting(void) {
+    char path[1024];
+    const char *home = g_get_user_config_dir();
+    if (home) snprintf(path, sizeof(path), "%s/hexed", home);
+    else snprintf(path, sizeof(path), "%s/.config/hexed", g_get_home_dir() ? g_get_home_dir() : ".");
+    strncat(path, "/font_size", sizeof(path) - strlen(path) - 1);
+    FILE *f = fopen(path, "r");
+    if (f) {
+        int val = 0;
+        if (fscanf(f, "%d", &val) == 1) {
+            fclose(f);
+            if (val >= 6 && val <= 48) return val;
+        } else {
+            fclose(f);
+        }
+    }
+    return DEFAULT_FONT_SIZE_PT;
+}
+
 void app_set_theme(App *app, hxd_theme_t theme) {
     if (!app) return;
     app->theme = theme;
@@ -309,12 +345,16 @@ void app_set_theme(App *app, hxd_theme_t theme) {
     app_update_ui(app);
 }
 
-void app_apply_settings(App *app, hxd_theme_t theme, bool column_interlacing, bool cross_highlighting, hxd_hex_case_t hex_case, int bytes_per_row) {
+void app_apply_settings(App *app, hxd_theme_t theme, bool column_interlacing, bool cross_highlighting, hxd_hex_case_t hex_case, int bytes_per_row, int font_size_pt) {
     if (!app) return;
     app->column_interlacing = column_interlacing;
     app->cross_highlighting = cross_highlighting;
     app->hex_case = hex_case;
     app->bytes_per_row = bytes_per_row;
+    if (font_size_pt >= 6 && font_size_pt <= 48) {
+        app->font_size_pt = font_size_pt;
+        save_font_size_setting(font_size_pt);
+    }
 
     // Apply settings to ALL open hex views
     for (GList *l = app->hex_views; l != NULL; l = l->next) {
@@ -324,6 +364,9 @@ void app_apply_settings(App *app, hxd_theme_t theme, bool column_interlacing, bo
             hex_view_set_cross_highlighting(v, app->cross_highlighting);
             hex_view_set_hex_case(v, app->hex_case);
             hex_view_set_bytes_per_row(v, app->bytes_per_row);
+            if (app->font_size_pt > 0) {
+                hex_view_set_font_size(v, app->font_size_pt);
+            }
         }
     }
 
@@ -340,12 +383,18 @@ void app_apply_settings(App *app, hxd_theme_t theme, bool column_interlacing, bo
                         hex_view_set_cross_highlighting(st->v1, app->cross_highlighting);
                         hex_view_set_hex_case(st->v1, app->hex_case);
                         hex_view_set_bytes_per_row(st->v1, app->bytes_per_row);
+                        if (app->font_size_pt > 0) {
+                            hex_view_set_font_size(st->v1, app->font_size_pt);
+                        }
                     }
                     if (st->v2) {
                         hex_view_set_column_interlacing(st->v2, app->column_interlacing);
                         hex_view_set_cross_highlighting(st->v2, app->cross_highlighting);
                         hex_view_set_hex_case(st->v2, app->hex_case);
                         hex_view_set_bytes_per_row(st->v2, app->bytes_per_row);
+                        if (app->font_size_pt > 0) {
+                            hex_view_set_font_size(st->v2, app->font_size_pt);
+                        }
                     }
                 }
             }
@@ -374,6 +423,7 @@ App *app_create(void) {
     app->cross_highlighting = true;
     app->hex_case = HXD_HEX_LOWERCASE;
     app->bytes_per_row = 16;
+    app->font_size_pt = load_font_size_setting();
     app->last_open_dir = load_last_dir();
 
     theme_init();
@@ -1290,10 +1340,16 @@ void app_open_diff_view(App *app, document_t *doc1, document_t *doc2) {
 
     hex_view_set_column_interlacing(st->v1, app->column_interlacing);
     hex_view_set_column_interlacing(st->v2, app->column_interlacing);
+    hex_view_set_cross_highlighting(st->v1, app->cross_highlighting);
+    hex_view_set_cross_highlighting(st->v2, app->cross_highlighting);
     hex_view_set_hex_case(st->v1, app->hex_case);
     hex_view_set_hex_case(st->v2, app->hex_case);
     hex_view_set_bytes_per_row(st->v1, app->bytes_per_row);
     hex_view_set_bytes_per_row(st->v2, app->bytes_per_row);
+    if (app->font_size_pt > 0) {
+        hex_view_set_font_size(st->v1, app->font_size_pt);
+        hex_view_set_font_size(st->v2, app->font_size_pt);
+    }
 
     g_signal_connect(st->v1->v_adj, "value-changed", G_CALLBACK(on_editor_diff_v1_scrolled), st);
     g_signal_connect(st->v2->v_adj, "value-changed", G_CALLBACK(on_editor_diff_v2_scrolled), st);

@@ -5,6 +5,9 @@
 #include "../core/document.h"
 #include <gtk/gtk.h>
 
+#define DEFAULT_FONT "Monospace 12"
+#define DEFAULT_FONT_SIZE_PT 12
+
 typedef struct _HexView HexView;
 
 typedef void (*hex_view_change_callback)(HexView *view, void *userdata);
@@ -33,6 +36,7 @@ struct _HexView {
     int                       ascii_col_w;
 
     int                       font_size_pt;
+    int                       default_font_size_pt;
 
     // View options
     bool                      column_interlacing;
@@ -65,7 +69,9 @@ void       hex_view_set_hex_case(HexView *view, hxd_hex_case_t hcase);
 void       hex_view_set_bytes_per_row(HexView *view, int bpr);
 void       hex_view_refresh(HexView *view);
 
-/* Zoom controls (Ctrl + Scroll / Ctrl +/-/0) */
+/* Zoom & Font controls (Ctrl + Scroll / Ctrl +/-/0) */
+void       hex_view_set_font_size(HexView *view, int size_pt);
+int        hex_view_get_font_size(HexView *view);
 void       hex_view_zoom_in(HexView *view);
 void       hex_view_zoom_out(HexView *view);
 void       hex_view_zoom_reset(HexView *view);
