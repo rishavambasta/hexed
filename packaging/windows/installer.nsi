@@ -7,7 +7,7 @@ SetCompressor /SOLID lzma
 
 !define PRODUCT_NAME "HexEd"
 !ifndef PRODUCT_VERSION
-!define PRODUCT_VERSION "1.7"
+!define PRODUCT_VERSION "1.8"
 !endif
 !define PRODUCT_PUBLISHER "Rishav Ambasta"
 !define PRODUCT_WEB_SITE "https://github.com/rishavambasta/hexed"

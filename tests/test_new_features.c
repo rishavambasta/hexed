@@ -944,6 +944,53 @@ static void test_edited_bytes_tracking_and_saving(void) {
     printf("  [PASS] Edited bytes tracking and save reset verified!\n");
 }
 
+static void test_doc_duplicate(void) {
+    printf("Testing document duplication logic and isolation...\n");
+
+    document_t *doc = doc_create_new();
+    assert(doc != NULL);
+
+    const uint8_t sample[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04 };
+    doc_insert(doc, 0, sample, sizeof(sample));
+    doc_set_cursor(doc, 3, false);
+    doc_set_selection(doc, 2, 4);
+
+    // Duplicate document
+    document_t *dup = doc_duplicate(doc);
+    assert(dup != NULL);
+    assert(dup->pt != NULL);
+    assert(pt_get_size(dup->pt) == pt_get_size(doc->pt));
+    assert(dup->cursor_offset == doc->cursor_offset);
+    assert(dup->selection.start == doc->selection.start);
+    assert(dup->selection.length == doc->selection.length);
+    assert(strstr(dup->display_name, "(copy)") != NULL);
+
+    uint8_t orig_buf[8] = {0}, dup_buf[8] = {0};
+    pt_read_bytes(doc->pt, 0, orig_buf, 8, NULL);
+    pt_read_bytes(dup->pt, 0, dup_buf, 8, NULL);
+    assert(memcmp(orig_buf, dup_buf, 8) == 0);
+
+    // Modify duplicate: should NOT alter original document
+    uint8_t new_val = 0xAA;
+    doc_insert(dup, 0, &new_val, 1);
+    assert(pt_get_size(dup->pt) == pt_get_size(doc->pt) + 1);
+
+    uint8_t check_orig[8] = {0};
+    pt_read_bytes(doc->pt, 0, check_orig, 8, NULL);
+    assert(memcmp(check_orig, sample, 8) == 0); // Original remains unchanged!
+
+    // Free duplicate first to verify independence
+    doc_free(dup);
+
+    // Original must still be valid
+    memset(check_orig, 0, sizeof(check_orig));
+    pt_read_bytes(doc->pt, 0, check_orig, 8, NULL);
+    assert(memcmp(check_orig, sample, 8) == 0);
+
+    doc_free(doc);
+    printf("  [PASS] Document duplication and isolation verified!\n");
+}
+
 int main(void) {
     printf("=== Testing New Hex Editor Features ===\n");
     test_sha256_and_crc32();
@@ -960,6 +1007,7 @@ int main(void) {
     test_intel_hex_open_modes();
     test_search_robustness_and_features();
     test_edited_bytes_tracking_and_saving();
+    test_doc_duplicate();
     printf("=== All New Features Verified Successfully! ===\n");
     return 0;
 }

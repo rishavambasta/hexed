@@ -60,6 +60,7 @@ void        app_remember_file_dir(App *app, const char *filepath);
 void        app_new_document(App *app);
 void        app_open_document(App *app, const char *path);
 void        app_open_dialog(App *app);
+void        app_duplicate_document_view(App *app, HexView *view);
 void        app_save_document(App *app);
 void        app_save_as_document(App *app);
 void        app_close_active_document(App *app);

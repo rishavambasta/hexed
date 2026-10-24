@@ -39,6 +39,7 @@ typedef struct {
 document_t *doc_create_new(void);
 document_t *doc_open_file(const char *path);
 document_t *doc_open_file_ex(const char *path, bool convert_ihex);
+document_t *doc_duplicate(const document_t *src);
 bool        doc_save(document_t *doc);
 bool        doc_save_as(document_t *doc, const char *new_path);
 void        doc_free(document_t *doc);

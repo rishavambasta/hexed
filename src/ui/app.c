@@ -70,6 +70,16 @@ static void on_tab_menu_close_others(GtkMenuItem *item, gpointer user_data) {
     app_close_all_except(app, keep_view);
 }
 
+static void on_tab_menu_duplicate(GtkMenuItem *item, gpointer user_data) {
+    (void)item;
+    HexView *view = (HexView *)user_data;
+    if (!view || !view->doc) return;
+    App *app = (App *)g_object_get_data(G_OBJECT(view->drawing_area), "app");
+    if (!app && view->change_userdata) app = (App *)view->change_userdata;
+    if (!app) return;
+    app_duplicate_document_view(app, view);
+}
+
 static void on_tab_menu_close_all(GtkMenuItem *item, gpointer user_data) {
     (void)item;
     App *app = (App *)user_data;
@@ -94,14 +104,19 @@ static gboolean on_tab_button_press(GtkWidget *widget, GdkEventButton *event, gp
 
         GtkWidget *menu = gtk_menu_new();
 
+        GtkWidget *m_duplicate = gtk_menu_item_new_with_label("Duplicate Tab");
+        GtkWidget *m_sep = gtk_separator_menu_item_new();
         GtkWidget *m_close = gtk_menu_item_new_with_label("Close Tab");
         GtkWidget *m_close_others = gtk_menu_item_new_with_label("Close all but this");
         GtkWidget *m_close_all = gtk_menu_item_new_with_label("Close all");
 
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_duplicate);
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_sep);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close_others);
         gtk_menu_shell_append(GTK_MENU_SHELL(menu), m_close_all);
 
+        g_signal_connect(m_duplicate, "activate", G_CALLBACK(on_tab_menu_duplicate), view);
         g_signal_connect(m_close, "activate", G_CALLBACK(on_tab_menu_close), view);
         g_signal_connect(m_close_others, "activate", G_CALLBACK(on_tab_menu_close_others), view);
         g_signal_connect(m_close_all, "activate", G_CALLBACK(on_tab_menu_close_all), app);
@@ -711,6 +726,24 @@ void app_update_ui(App *app) {
 void app_new_document(App *app) {
     document_t *doc = doc_create_new();
     add_document_tab(app, doc);
+}
+
+void app_duplicate_document_view(App *app, HexView *view) {
+    if (!app || !view || !view->doc) return;
+
+    document_t *dup_doc = doc_duplicate(view->doc);
+    if (!dup_doc) return;
+
+    add_document_tab(app, dup_doc);
+
+    if (app->active_view) {
+        hex_view_set_font_size(app->active_view, hex_view_get_font_size(view));
+        hex_view_set_hex_case(app->active_view, view->hex_case);
+        hex_view_set_column_interlacing(app->active_view, view->column_interlacing);
+        hex_view_set_cross_highlighting(app->active_view, view->cross_highlighting);
+        hex_view_set_bytes_per_row(app->active_view, view->doc->bytes_per_row);
+        hex_view_scroll_to_offset(app->active_view, view->doc->cursor_offset);
+    }
 }
 
 void app_open_document(App *app, const char *path) {

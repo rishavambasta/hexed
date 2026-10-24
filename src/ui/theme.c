@@ -269,8 +269,8 @@ static const char *s_bw_css =
     "progressbar trough, progressbar trough:backdrop { background-color: #ffffff; border: 1px solid #000000; border-radius: 2px; }\n"
     "progressbar progress, progressbar progress:backdrop { background-color: #000000; background-image: none; border-radius: 2px; }\n"
     "tooltip { background-color: #000000; color: #ffffff; border: 1px solid #ffffff; border-radius: 2px; padding: 4px 8px; font-size: 11px; }\n"
-    ".mode-badge-ovr { background-color: #000000; color: #ffffff; font-weight: bold; border: 1px solid #000000; border-radius: 2px; padding: 2px 6px; font-size: 11px; }\n"
-    ".mode-badge-ins { background-color: #ffffff; color: #000000; font-weight: bold; border: 2px solid #000000; border-radius: 2px; padding: 1px 5px; font-size: 11px; }\n";
+    "button .mode-badge-ovr, statusbar .mode-badge-ovr, label.mode-badge-ovr, .mode-badge-ovr { background-color: #000000; color: #ffffff; font-weight: bold; border: 1px solid #000000; border-radius: 2px; padding: 2px 6px; font-size: 11px; }\n"
+    "button .mode-badge-ins, statusbar .mode-badge-ins, label.mode-badge-ins, .mode-badge-ins { background-color: #ffffff; color: #000000; font-weight: bold; border: 2px solid #000000; border-radius: 2px; padding: 1px 5px; font-size: 11px; }\n";
 
 void theme_init(void) {
     if (!s_css_provider) {

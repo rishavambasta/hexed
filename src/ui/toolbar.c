@@ -82,6 +82,31 @@ static void resolve_icon_path(const char *icon_file, char *buf, size_t buf_size)
     }
 }
 
+static void pixbuf_convert_to_grayscale(GdkPixbuf *pb) {
+    if (!pb) return;
+    int n_channels = gdk_pixbuf_get_n_channels(pb);
+    if (n_channels < 3) return;
+    int width = gdk_pixbuf_get_width(pb);
+    int height = gdk_pixbuf_get_height(pb);
+    int rowstride = gdk_pixbuf_get_rowstride(pb);
+    guchar *pixels = gdk_pixbuf_get_pixels(pb);
+
+    for (int y = 0; y < height; y++) {
+        guchar *p = pixels + y * rowstride;
+        for (int x = 0; x < width; x++) {
+            guchar r = p[0];
+            guchar g = p[1];
+            guchar b = p[2];
+            // Standard luminance: 0.299*R + 0.587*G + 0.114*B
+            guchar gray = (guchar)((r * 77 + g * 150 + b * 29) >> 8);
+            p[0] = gray;
+            p[1] = gray;
+            p[2] = gray;
+            p += n_channels;
+        }
+    }
+}
+
 static void update_button_icon(GtkWidget *btn) {
     if (!btn) return;
     const char *icon_file = (const char *)g_object_get_data(G_OBJECT(btn), "icon_file");
@@ -94,6 +119,9 @@ static void update_button_icon(GtkWidget *btn) {
     GdkPixbuf *pb = gdk_pixbuf_new_from_file_at_scale(full_icon_path, 18, 18, TRUE, NULL);
     GtkWidget *img = NULL;
     if (pb) {
+        if (theme_get_current() == HXD_THEME_BW) {
+            pixbuf_convert_to_grayscale(pb);
+        }
         img = gtk_image_new_from_pixbuf(pb);
         g_object_unref(pb);
     } else {

@@ -82,6 +82,55 @@ document_t *doc_open_file(const char *path) {
     return doc_open_file_ex(path, true);
 }
 
+document_t *doc_duplicate(const document_t *src) {
+    if (!src) return NULL;
+
+    document_t *doc = calloc(1, sizeof(document_t));
+    if (!doc) return NULL;
+
+    doc->filepath = src->filepath ? strdup(src->filepath) : NULL;
+    if (src->display_name) {
+        char name_buf[256];
+        snprintf(name_buf, sizeof(name_buf), "%s (copy)", src->display_name);
+        doc->display_name = strdup(name_buf);
+    } else {
+        doc->display_name = strdup("Untitled (copy)");
+    }
+
+    doc->pt = src->pt ? pt_clone(src->pt) : pt_create();
+    doc->history = history_create();
+    history_record(doc->history, HXD_ACTION_OPEN, "Duplicate Document", 0, pt_get_size(doc->pt), doc->pt);
+
+    doc->is_modified = src->is_modified;
+    doc->saved_history_index = doc->history->current_index;
+    doc->history->saved_index = doc->saved_history_index;
+    doc->saved_pt = src->saved_pt ? pt_clone(src->saved_pt) : pt_clone(doc->pt);
+
+    doc->cursor_offset = src->cursor_offset;
+    doc->cursor_nibble = src->cursor_nibble;
+    doc->cursor_in_ascii = src->cursor_in_ascii;
+    doc->selection = src->selection;
+    doc->edit_mode = src->edit_mode;
+    doc->endian = src->endian;
+    doc->bytes_per_row = src->bytes_per_row > 0 ? src->bytes_per_row : 16;
+    doc->is_raw_hex_format = src->is_raw_hex_format;
+
+    // Copy bookmarks if present
+    if (src->bookmark_count > 0 && src->bookmarks) {
+        doc->bookmark_capacity = src->bookmark_count;
+        doc->bookmark_count = src->bookmark_count;
+        doc->bookmarks = calloc(doc->bookmark_capacity, sizeof(bookmark_t));
+        if (doc->bookmarks) {
+            for (size_t i = 0; i < src->bookmark_count; i++) {
+                doc->bookmarks[i].offset = src->bookmarks[i].offset;
+                doc->bookmarks[i].name = src->bookmarks[i].name ? strdup(src->bookmarks[i].name) : NULL;
+            }
+        }
+    }
+
+    return doc;
+}
+
 bool doc_save(document_t *doc) {
     if (!doc || !doc->filepath) return false;
     return doc_save_as(doc, doc->filepath);

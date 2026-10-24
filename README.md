@@ -1,4 +1,4 @@
-# HexEd (v1.7)
+# HexEd (v1.8)
 
 **Author:** Rishav Ambasta
 
@@ -34,7 +34,7 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - **Meld-Style Side-by-Side Editor Diff Tab**: Click the prominent green button (`Compare Side-by-Side ⬌`) to directly launch synchronized, side-by-side hex comparison into the editor view as default behavior with split view toggle (Horizontal / Vertical), difference chunk counter, and `F7` / `Shift+F7` shortcut navigation.
   - Accessible via Toolbar (`twin_compare.svg`), Main Menu (`Ctrl + D`), or the BottomBar panel.
 - **Tab Context Menu & Middle-Click Close**:
-  - Right-click any document or diff tab for instant context options: `Close Tab`, `Close all but this`, and `Close all` (with unsaved changes warnings).
+  - Right-click any document tab for instant context options: `Duplicate Tab`, `Close Tab`, `Close all but this`, and `Close all` (with unsaved changes warnings).
   - Middle-click directly closes any tab.
 - **Top Icons for Open & New**:
   - Prominent dedicated `tab-new` and `document-open` action icons docked directly on top of the notebook tab bar and toolbar.
@@ -147,6 +147,8 @@ A high-performance, fully offline, cross-platform (Linux & Windows) GUI hex edit
   - Intel HEX (`.hex`) and Motorola S-Record (`.srec`).
 - **Settings & Themes**:
   - Dark Mode, Light Mode, and Black & White themes matching `myhex.online`.
+  - Fully greyscaled/monochrome icons when using the Black & White theme for a completely uniform, distraction-free aesthetic.
+  - Editor font size setting (range 8 to 32 pt) with persistent session storage.
   - Column interlacing toggle.
   - Crosshair row & column highlight.
   - Hex case toggle (Uppercase `A-F` or Lowercase `a-f`).
