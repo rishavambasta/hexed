@@ -211,6 +211,10 @@ static GtkNotebook *on_notebook_create_window(GtkNotebook *notebook, GtkWidget *
     App *app = (App *)user_data;
 
     GtkWidget *win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    GtkWidget *hb = gtk_header_bar_new();
+    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(hb), TRUE);
+    gtk_header_bar_set_title(GTK_HEADER_BAR(hb), HEXED_TITLE_BASE);
+    gtk_window_set_titlebar(GTK_WINDOW(win), hb);
     gtk_window_set_title(GTK_WINDOW(win), HEXED_TITLE_BASE);
     gtk_window_set_default_size(GTK_WINDOW(win), 900, 620);
     g_signal_connect(win, "key-press-event", G_CALLBACK(on_app_window_key_press), app);
@@ -524,6 +528,10 @@ App *app_create(void) {
 
     // Main Window
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    app->headerbar = gtk_header_bar_new();
+    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(app->headerbar), TRUE);
+    gtk_header_bar_set_title(GTK_HEADER_BAR(app->headerbar), HEXED_TITLE_BASE);
+    gtk_window_set_titlebar(GTK_WINDOW(app->window), app->headerbar);
     gtk_window_set_title(GTK_WINDOW(app->window), HEXED_TITLE_BASE);
     gtk_window_set_default_size(GTK_WINDOW(app->window), 1260, 820);
     g_signal_connect(app->window, "delete-event", G_CALLBACK(on_window_delete_event), app);
@@ -661,6 +669,9 @@ void app_update_ui(App *app) {
     char title[256];
     snprintf(title, sizeof(title), "%s - [%s%s]", HEXED_TITLE_BASE, doc->display_name, doc->is_modified ? "*" : "");
     gtk_window_set_title(GTK_WINDOW(app->window), title);
+    if (app->headerbar && GTK_IS_HEADER_BAR(app->headerbar)) {
+        gtk_header_bar_set_title(GTK_HEADER_BAR(app->headerbar), title);
+    }
 
     // Update all document tab labels: bold followed by "*" when modified
     for (GList *l = app->hex_views; l != NULL; l = l->next) {

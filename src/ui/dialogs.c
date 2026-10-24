@@ -9,6 +9,14 @@
 #include <string.h>
 #include <ctype.h>
 
+static void dialog_setup_titlebar(GtkWidget *dlg, const char *title) {
+    if (!dlg) return;
+    GtkWidget *hb = gtk_header_bar_new();
+    gtk_header_bar_set_show_close_button(GTK_HEADER_BAR(hb), TRUE);
+    if (title) gtk_header_bar_set_title(GTK_HEADER_BAR(hb), title);
+    gtk_window_set_titlebar(GTK_WINDOW(dlg), hb);
+}
+
 void dialog_show_fill(App *app) {
     document_t *doc = app_get_active_document(app);
     if (!doc) return;
@@ -21,6 +29,7 @@ void dialog_show_fill(App *app) {
         "_OK", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(dlg, "Fill Pattern");
 
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     GtkWidget *grid = gtk_grid_new();
@@ -76,6 +85,7 @@ void dialog_show_insert(App *app) {
         "_OK", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(dlg, "Insert Block");
 
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     GtkWidget *grid = gtk_grid_new();
@@ -134,6 +144,7 @@ void dialog_show_gap(App *app) {
         "_OK", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(dlg, "Make Gap (Sparse Memory)");
 
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     GtkWidget *grid = gtk_grid_new();
@@ -183,6 +194,7 @@ void dialog_show_size(App *app) {
         "_OK", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(dlg, "Set Document Size");
 
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     GtkWidget *grid = gtk_grid_new();
@@ -405,6 +417,7 @@ void dialog_show_select_range(App *app) {
         "_Select", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(st.dlg, "Select Range / Block");
     gtk_dialog_set_default_response(GTK_DIALOG(st.dlg), GTK_RESPONSE_OK);
     gtk_window_set_default_size(GTK_WINDOW(st.dlg), 460, 360);
 
@@ -646,6 +659,7 @@ void dialog_show_goto(App *app) {
         "_Go To", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(st.dlg, "Go to Address / Offset (Ctrl+G)");
     gtk_dialog_set_default_response(GTK_DIALOG(st.dlg), GTK_RESPONSE_OK);
     gtk_window_set_default_size(GTK_WINDOW(st.dlg), 440, 260);
 
@@ -866,6 +880,7 @@ void dialog_show_bitwise_op(App *app) {
         "_Apply", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(st.dlg, "Bitwise Operations (AND / OR / NOT / XOR)");
     gtk_dialog_set_default_response(GTK_DIALOG(st.dlg), GTK_RESPONSE_OK);
     gtk_window_set_default_size(GTK_WINDOW(st.dlg), 460, 360);
 
@@ -1456,6 +1471,7 @@ void dialog_show_diff(App *app) {
         "_Close", GTK_RESPONSE_CLOSE,
         NULL
     );
+    dialog_setup_titlebar(st->dialog, "File Comparison / Diff Tool");
     gtk_window_set_default_size(GTK_WINDOW(st->dialog), 960, 680);
 
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(st->dialog));
@@ -1648,6 +1664,7 @@ void dialog_show_settings(App *app) {
         "_OK", GTK_RESPONSE_OK,
         NULL
     );
+    dialog_setup_titlebar(dlg, "Settings");
 
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     GtkWidget *grid = gtk_grid_new();
@@ -1720,6 +1737,7 @@ void dialog_show_controls(App *app) {
         "_Close", GTK_RESPONSE_CLOSE,
         NULL
     );
+    dialog_setup_titlebar(dlg, "Keyboard Shortcuts & Controls");
 
     GtkWidget *content = gtk_dialog_get_content_area(GTK_DIALOG(dlg));
     gtk_window_set_default_size(GTK_WINDOW(dlg), 450, 400);
@@ -1812,6 +1830,7 @@ int dialog_prompt_ihex_mode(App *app, const char *path) {
         "Converted Binary", 1,
         NULL
     );
+    dialog_setup_titlebar(dlg, "Open Intel-HEX File");
 
     gtk_dialog_set_default_response(GTK_DIALOG(dlg), 1);
 

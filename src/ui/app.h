@@ -12,6 +12,7 @@ typedef struct _app_toolbar_t app_toolbar_t;
 
 typedef struct _App {
     GtkWidget     *window;
+    GtkWidget     *headerbar;
     GtkWidget     *main_vbox;
     GtkWidget     *toolbar_widget;
     GtkWidget     *paned_h1;
