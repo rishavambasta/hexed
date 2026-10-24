@@ -126,7 +126,10 @@ static const char *s_dark_css =
     "progressbar, progressbar:backdrop { background-color: transparent; }\n"
     "progressbar trough, progressbar trough:backdrop { background-color: #252525; border: 1px solid #444444; border-radius: 3px; }\n"
     "progressbar progress, progressbar progress:backdrop { background-color: #0087b8; background-image: none; border-radius: 2px; }\n"
-    "tooltip { background-color: #111111; color: #f1f5f9; border: 1px solid #444444; border-radius: 4px; padding: 4px 8px; font-size: 11px; }\n"
+    "tooltip, tooltip.background, tooltip.csd, tooltip window, .tooltip { background-color: #252525; background-image: none; border: 1px solid #444444; border-radius: 4px; box-shadow: none; text-shadow: none; padding: 2px 4px; }\n"
+    "tooltip.background { background-color: #252525; background-image: none; border: 1px solid #444444; }\n"
+    "tooltip decoration, tooltip.csd decoration { background-color: transparent; border-radius: 4px; box-shadow: none; }\n"
+    "tooltip *, tooltip.background *, tooltip label { background-color: transparent; color: #f1f5f9; text-shadow: none; font-size: 11px; padding: 3px 6px; }\n"
     ".mode-badge-ovr { background-color: #2e7d32; color: #ffffff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n"
     ".mode-badge-ins { background-color: #d84315; color: #ffffff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n";
 
@@ -198,7 +201,10 @@ static const char *s_light_css =
     "progressbar, progressbar:backdrop { background-color: transparent; }\n"
     "progressbar trough, progressbar trough:backdrop { background-color: #e2e8f0; border: 1px solid #cbd5e1; border-radius: 3px; }\n"
     "progressbar progress, progressbar progress:backdrop { background-color: #0d9488; background-image: none; border-radius: 2px; }\n"
-    "tooltip { background-color: #1e293b; color: #ffffff; border: 1px solid #334155; border-radius: 4px; padding: 4px 8px; font-size: 11px; }\n"
+    "tooltip, tooltip.background, tooltip.csd, tooltip window, .tooltip { background-color: #ffffff; background-image: none; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); text-shadow: none; padding: 2px 4px; }\n"
+    "tooltip.background { background-color: #ffffff; background-image: none; border: 1px solid #cbd5e1; }\n"
+    "tooltip decoration, tooltip.csd decoration { background-color: transparent; border-radius: 4px; box-shadow: none; }\n"
+    "tooltip *, tooltip.background *, tooltip label { background-color: transparent; color: #0f172a; text-shadow: none; font-size: 11px; padding: 3px 6px; }\n"
     ".mode-badge-ovr { background-color: #16a34a; color: #ffffff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n"
     ".mode-badge-ins { background-color: #ea580c; color: #ffffff; font-weight: bold; border-radius: 3px; padding: 2px 6px; font-size: 11px; }\n";
 
@@ -268,7 +274,10 @@ static const char *s_bw_css =
     "progressbar, progressbar:backdrop { background-color: transparent; }\n"
     "progressbar trough, progressbar trough:backdrop { background-color: #ffffff; border: 1px solid #000000; border-radius: 2px; }\n"
     "progressbar progress, progressbar progress:backdrop { background-color: #000000; background-image: none; border-radius: 2px; }\n"
-    "tooltip { background-color: #000000; color: #ffffff; border: 1px solid #ffffff; border-radius: 2px; padding: 4px 8px; font-size: 11px; }\n"
+    "tooltip, tooltip.background, tooltip.csd, tooltip window, .tooltip { background-color: #ffffff; background-image: none; border: 2px solid #000000; border-radius: 2px; box-shadow: none; text-shadow: none; padding: 2px 4px; }\n"
+    "tooltip.background { background-color: #ffffff; background-image: none; border: 2px solid #000000; }\n"
+    "tooltip decoration, tooltip.csd decoration { background-color: transparent; border-radius: 2px; box-shadow: none; }\n"
+    "tooltip *, tooltip.background *, tooltip label { background-color: transparent; color: #000000; text-shadow: none; font-weight: bold; font-size: 11px; padding: 3px 6px; }\n"
     "button .mode-badge-ovr, statusbar .mode-badge-ovr, label.mode-badge-ovr, .mode-badge-ovr { background-color: #000000; color: #ffffff; font-weight: bold; border: 1px solid #000000; border-radius: 2px; padding: 2px 6px; font-size: 11px; }\n"
     "button .mode-badge-ins, statusbar .mode-badge-ins, label.mode-badge-ins, .mode-badge-ins { background-color: #ffffff; color: #000000; font-weight: bold; border: 2px solid #000000; border-radius: 2px; padding: 1px 5px; font-size: 11px; }\n";
 
