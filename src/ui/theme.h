@@ -3,6 +3,7 @@
 
 #include "../core/types.h"
 #include <gtk/gtk.h>
+#include <stdbool.h>
 
 typedef struct {
     // Colors for Cairo drawing
@@ -27,5 +28,6 @@ void                  theme_init(void);
 void                  theme_set(hxd_theme_t theme);
 hxd_theme_t           theme_get_current(void);
 const theme_colors_t *theme_get_colors(void);
+bool                  theme_is_dark(void);
 
 #endif // HXD_THEME_H

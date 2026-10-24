@@ -49,6 +49,8 @@ typedef struct _App {
 App        *app_create(void);
 void        app_run(App *app, int argc, char **argv);
 void        app_update_ui(App *app);
+void        app_set_theme(App *app, hxd_theme_t theme);
+void        app_apply_settings(App *app, hxd_theme_t theme, bool column_interlacing, bool cross_highlighting, hxd_hex_case_t hex_case, int bytes_per_row);
 
 /* Document operations */
 document_t *app_get_active_document(App *app);

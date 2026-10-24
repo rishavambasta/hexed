@@ -237,6 +237,125 @@ static void save_last_dir(const char *dir) {
     free(cfg);
 }
 
+static void save_theme_setting(hxd_theme_t theme) {
+    char path[1024];
+    const char *home = g_get_user_config_dir();
+    if (home) snprintf(path, sizeof(path), "%s/hexed", home);
+    else snprintf(path, sizeof(path), "%s/.config/hexed", g_get_home_dir() ? g_get_home_dir() : ".");
+    g_mkdir_with_parents(path, 0755);
+    strncat(path, "/theme", sizeof(path) - strlen(path) - 1);
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "%d\n", (int)theme);
+        fclose(f);
+    }
+}
+
+static hxd_theme_t load_theme_setting(void) {
+    char path[1024];
+    const char *home = g_get_user_config_dir();
+    if (home) snprintf(path, sizeof(path), "%s/hexed", home);
+    else snprintf(path, sizeof(path), "%s/.config/hexed", g_get_home_dir() ? g_get_home_dir() : ".");
+    strncat(path, "/theme", sizeof(path) - strlen(path) - 1);
+    FILE *f = fopen(path, "r");
+    if (f) {
+        int val = 0;
+        if (fscanf(f, "%d", &val) == 1) {
+            fclose(f);
+            if (val >= 0 && val <= 2) return (hxd_theme_t)val;
+        } else {
+            fclose(f);
+        }
+    }
+    return HXD_THEME_DARK;
+}
+
+void app_set_theme(App *app, hxd_theme_t theme) {
+    if (!app) return;
+    app->theme = theme;
+    theme_set(theme);
+    save_theme_setting(theme);
+
+    if (app->toolbar) {
+        toolbar_reload_icons(app->toolbar);
+    }
+
+    // Refresh all open hex views
+    for (GList *l = app->hex_views; l != NULL; l = l->next) {
+        HexView *v = (HexView *)l->data;
+        if (v && v->drawing_area) {
+            gtk_widget_queue_draw(v->drawing_area);
+        }
+    }
+
+    // Refresh any diff views in notebook
+    if (app->doc_notebook) {
+        int n = gtk_notebook_get_n_pages(GTK_NOTEBOOK(app->doc_notebook));
+        for (int i = 0; i < n; i++) {
+            GtkWidget *page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(app->doc_notebook), i);
+            if (page) {
+                app_diff_view_state_t *st = g_object_get_data(G_OBJECT(page), "diff_state");
+                if (st) {
+                    if (st->v1 && st->v1->drawing_area) gtk_widget_queue_draw(st->v1->drawing_area);
+                    if (st->v2 && st->v2->drawing_area) gtk_widget_queue_draw(st->v2->drawing_area);
+                }
+            }
+        }
+    }
+
+    if (app->window) {
+        gtk_widget_queue_draw(app->window);
+    }
+    app_update_ui(app);
+}
+
+void app_apply_settings(App *app, hxd_theme_t theme, bool column_interlacing, bool cross_highlighting, hxd_hex_case_t hex_case, int bytes_per_row) {
+    if (!app) return;
+    app->column_interlacing = column_interlacing;
+    app->cross_highlighting = cross_highlighting;
+    app->hex_case = hex_case;
+    app->bytes_per_row = bytes_per_row;
+
+    // Apply settings to ALL open hex views
+    for (GList *l = app->hex_views; l != NULL; l = l->next) {
+        HexView *v = (HexView *)l->data;
+        if (v) {
+            hex_view_set_column_interlacing(v, app->column_interlacing);
+            hex_view_set_cross_highlighting(v, app->cross_highlighting);
+            hex_view_set_hex_case(v, app->hex_case);
+            hex_view_set_bytes_per_row(v, app->bytes_per_row);
+        }
+    }
+
+    // Apply settings to any diff views in notebook
+    if (app->doc_notebook) {
+        int n = gtk_notebook_get_n_pages(GTK_NOTEBOOK(app->doc_notebook));
+        for (int i = 0; i < n; i++) {
+            GtkWidget *page = gtk_notebook_get_nth_page(GTK_NOTEBOOK(app->doc_notebook), i);
+            if (page) {
+                app_diff_view_state_t *st = g_object_get_data(G_OBJECT(page), "diff_state");
+                if (st) {
+                    if (st->v1) {
+                        hex_view_set_column_interlacing(st->v1, app->column_interlacing);
+                        hex_view_set_cross_highlighting(st->v1, app->cross_highlighting);
+                        hex_view_set_hex_case(st->v1, app->hex_case);
+                        hex_view_set_bytes_per_row(st->v1, app->bytes_per_row);
+                    }
+                    if (st->v2) {
+                        hex_view_set_column_interlacing(st->v2, app->column_interlacing);
+                        hex_view_set_cross_highlighting(st->v2, app->cross_highlighting);
+                        hex_view_set_hex_case(st->v2, app->hex_case);
+                        hex_view_set_bytes_per_row(st->v2, app->bytes_per_row);
+                    }
+                }
+            }
+        }
+    }
+
+    // Apply theme & queue redraw
+    app_set_theme(app, theme);
+}
+
 void app_remember_file_dir(App *app, const char *filepath) {
     if (!app || !filepath) return;
     char *dir = g_path_get_dirname(filepath);
@@ -250,7 +369,7 @@ void app_remember_file_dir(App *app, const char *filepath) {
 
 App *app_create(void) {
     App *app = calloc(1, sizeof(App));
-    app->theme = HXD_THEME_DARK;
+    app->theme = load_theme_setting();
     app->column_interlacing = true;
     app->cross_highlighting = true;
     app->hex_case = HXD_HEX_LOWERCASE;
@@ -258,6 +377,7 @@ App *app_create(void) {
     app->last_open_dir = load_last_dir();
 
     theme_init();
+    theme_set(app->theme);
 
     // Main Window
     app->window = gtk_window_new(GTK_WINDOW_TOPLEVEL);

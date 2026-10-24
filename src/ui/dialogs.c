@@ -1693,23 +1693,13 @@ void dialog_show_settings(App *app) {
     gtk_widget_show_all(dlg);
 
     if (gtk_dialog_run(GTK_DIALOG(dlg)) == GTK_RESPONSE_OK) {
-        app->theme = (hxd_theme_t)gtk_combo_box_get_active(GTK_COMBO_BOX(combo_theme));
-        app->column_interlacing = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(chk_interlace));
-        app->cross_highlighting = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(chk_cross));
-        app->hex_case = (hxd_hex_case_t)gtk_combo_box_get_active(GTK_COMBO_BOX(combo_case));
-        app->bytes_per_row = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(spin_bpr));
+        hxd_theme_t new_theme = (hxd_theme_t)gtk_combo_box_get_active(GTK_COMBO_BOX(combo_theme));
+        bool new_interlace = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(chk_interlace));
+        bool new_cross = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(chk_cross));
+        hxd_hex_case_t new_case = (hxd_hex_case_t)gtk_combo_box_get_active(GTK_COMBO_BOX(combo_case));
+        int new_bpr = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(spin_bpr));
 
-        theme_set(app->theme);
-        if (app->toolbar) {
-            toolbar_reload_icons(app->toolbar);
-        }
-        if (app->active_view) {
-
-            hex_view_set_column_interlacing(app->active_view, app->column_interlacing);
-            hex_view_set_cross_highlighting(app->active_view, app->cross_highlighting);
-            hex_view_set_hex_case(app->active_view, app->hex_case);
-            hex_view_set_bytes_per_row(app->active_view, app->bytes_per_row);
-        }
+        app_apply_settings(app, new_theme, new_interlace, new_cross, new_case, new_bpr);
     }
 
     gtk_widget_destroy(dlg);
